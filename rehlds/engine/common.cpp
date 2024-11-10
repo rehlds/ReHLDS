@@ -1238,7 +1238,7 @@ void *EXT_FUNC SZ_GetSpace(sizebuf_t *buf, int length)
 		}
 #endif // REHLDS_FIXES
 
-		Con_Printf("%s: overflow on %s\n", __func__, buffername);
+		Con_NetPrintf("%s: overflow on %s\n", __func__, buffername);
 
 		SZ_Clear(buf);
 		buf->flags |= SIZEBUF_OVERFLOWED;
