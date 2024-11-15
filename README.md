@@ -1,4 +1,4 @@
-# ReHLDS [![C/C++ CI](https://github.com/dreamstalker/rehlds/actions/workflows/build.yml/badge.svg)](https://github.com/dreamstalker/rehlds/actions/workflows/build.yml) [![GitHub release (by tag)](https://img.shields.io/github/downloads/dreamstalker/rehlds/latest/total)](https://github.com/dreamstalker/rehlds/releases/latest) ![GitHub all releases](https://img.shields.io/github/downloads/dreamstalker/rehlds/total) [![Percentage of issues still open](http://isitmaintained.com/badge/open/dreamstalker/rehlds.svg)](http://isitmaintained.com/project/dreamstalker/rehlds "Percentage of issues still open") [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) <img align="right" src="https://user-images.githubusercontent.com/5860435/111066129-040e5e00-84f0-11eb-9e1f-7a7e8611da2b.png" alt="ReHLDS" />
+# ReHLDS [![C/C++ CI](https://github.com/dreamstalker/ReHLDS/actions/workflows/build.yml/badge.svg)](https://github.com/dreamstalker/ReHLDS/actions/workflows/build.yml) [![GitHub release (by tag)](https://img.shields.io/github/downloads/dreamstalker/ReHLDS/latest/total)](https://github.com/dreamstalker/ReHLDS/releases/latest) ![GitHub all releases](https://img.shields.io/github/downloads/dreamstalker/ReHLDS/total) [![Percentage of issues still open](http://isitmaintained.com/badge/open/dreamstalker/ReHLDS.svg)](http://isitmaintained.com/project/dreamstalker/ReHLDS "Percentage of issues still open") [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) <img align="right" src="https://user-images.githubusercontent.com/5860435/111066129-040e5e00-84f0-11eb-9e1f-7a7e8611da2b.png" alt="ReHLDS" />
 Reverse-engineered (and bugfixed) HLDS
 
 ## What is this?
@@ -15,7 +15,7 @@ You can try playing on one of many servers that are using ReHLDS: [Game Tracker]
 </ul>
 
 ## How can use it?
-ReHLDS is fully compatible with the official pre-anniversary edition of HLDS (engine version <= 8684) downloaded by steamcmd. All you have to do is to download rehlds binaries and replace original swds.dll/engine_i486.so. For windows you can also copy a swds.pdb file with a debug information.
+ReHLDS is fully compatible with the official pre-anniversary edition of HLDS (engine version <= 8684) downloaded by steamcmd. All you have to do is to download ReHLDS binaries and replace original swds.dll/engine_i486.so. For windows you can also copy a swds.pdb file with a debug information.
 
 <b>Warning!</b> ReHLDS is not compatible with an old 5xxx or below platforms downloaded by hldsupdatetool.
 
@@ -27,13 +27,13 @@ app_update 90 -beta steam_legacy validate
 ```
 
 ## Downloads
-* [Release builds](https://github.com/dreamstalker/rehlds/releases)
-* [Dev builds](https://github.com/dreamstalker/rehlds/actions/workflows/build.yml)
+* [Release builds](https://github.com/dreamstalker/ReHLDS/releases)
+* [Dev builds](https://github.com/dreamstalker/ReHLDS/actions/workflows/build.yml)
 
 ReHLDS binaries require `SSE`, `SSE2` and `SSE3` instruction sets to run and can benefit from `SSE4.1` and `SSE4.2`
 
 <b>Warning!</b> ReHLDS is not binary compatible with original hlds since it's compiled with compilers other than ones used for original hlds.
-This means that plugins that do binary code analysis (Orpheu for example) probably will not work with rehlds.
+This means that plugins that do binary code analysis (Orpheu for example) probably will not work with ReHLDS.
 
 ## Configuring
 <details>
@@ -46,21 +46,21 @@ This means that plugins that do binary code analysis (Orpheu for example) probab
 <li>sv_echo_unknown_cmd &lt;1|0&gt; // Echo in the console when trying execute an unknown command. Default: 0
 <li>sv_rcon_condebug &lt;1|0&gt; // Print rcon debug in the console. Default: 1
 <li>sv_force_ent_intersection &lt;1|0&gt; // In a 3-rd party plugins used to force colliding of SOLID_SLIDEBOX entities. Default: 0
-<li>sv_rehlds_force_dlmax &lt;1|0&gt; // Force a client's cl_dlmax cvar to 1024. It avoids an excessive packets fragmentation. Default: 0
-<li>sv_rehlds_hull_centering &lt;1|0&gt; // Use center of hull instead of corner. Default: 0
-<li>sv_rehlds_movecmdrate_max_avg // Max average level of 'move' cmds for ban. Default: 400
-<li>sv_rehlds_movecmdrate_avg_punish // Time in minutes for which the player will be banned (0 - Permanent, use a negative number for a kick). Default: 5
-<li>sv_rehlds_movecmdrate_max_burst // Max burst level of 'move' cmds for ban. Default: 2500
-<li>sv_rehlds_movecmdrate_burst_punish // Time in minutes for which the player will be banned (0 - Permanent, use a negative number for a kick). Default: 5
-<li>sv_rehlds_send_mapcycle &lt;1|0&gt; // Send mapcycle.txt in serverinfo message (HLDS behavior, but it is unused on the client). Default: 0
-<li>sv_rehlds_stringcmdrate_max_avg // Max average level of 'string' cmds for ban. Default: 80
-<li>sv_rehlds_stringcmdrate_avg_punish // Time in minutes for which the player will be banned (0 - Permanent, use a negative number for a kick). Default: 5
-<li>sv_rehlds_stringcmdrate_max_burst // Max burst level of 'string' cmds for ban. Default: 400
-<li>sv_rehlds_stringcmdrate_burst_punish // Time in minutes for which the player will be banned (0 - Permanent, use a negative number for a kick). Default: 5
-<li>sv_rehlds_userinfo_transmitted_fields // Userinfo fields only with these keys will be transmitted to clients via network. If not set then all fields will be transmitted (except prefixed with underscore). Each key must be prefixed by backslash, for example "\name\model\*sid\*hltv\bottomcolor\topcolor". See [wiki](https://github.com/dreamstalker/rehlds/wiki/Userinfo-keys) to collect sufficient set of keys for your server. Default: ""
-<li>sv_rehlds_attachedentities_playeranimationspeed_fix // Fixes bug with gait animation speed increase when player has some attached entities (aiments). Can cause animation lags when cl_updaterate is low. Default: 0
-<li>sv_rehlds_maxclients_from_single_ip // Limit number of connections at the same time from single IP address, not confuse to already connected players. Default: 5
-<li>sv_rehlds_local_gametime &lt;1|0&gt; // A feature of local gametime which decrease "lags" if you run same map for a long time. Default: 0
+<li>sv_ReHLDS_force_dlmax &lt;1|0&gt; // Force a client's cl_dlmax cvar to 1024. It avoids an excessive packets fragmentation. Default: 0
+<li>sv_ReHLDS_hull_centering &lt;1|0&gt; // Use center of hull instead of corner. Default: 0
+<li>sv_ReHLDS_movecmdrate_max_avg // Max average level of 'move' cmds for ban. Default: 400
+<li>sv_ReHLDS_movecmdrate_avg_punish // Time in minutes for which the player will be banned (0 - Permanent, use a negative number for a kick). Default: 5
+<li>sv_ReHLDS_movecmdrate_max_burst // Max burst level of 'move' cmds for ban. Default: 2500
+<li>sv_ReHLDS_movecmdrate_burst_punish // Time in minutes for which the player will be banned (0 - Permanent, use a negative number for a kick). Default: 5
+<li>sv_ReHLDS_send_mapcycle &lt;1|0&gt; // Send mapcycle.txt in serverinfo message (HLDS behavior, but it is unused on the client). Default: 0
+<li>sv_ReHLDS_stringcmdrate_max_avg // Max average level of 'string' cmds for ban. Default: 80
+<li>sv_ReHLDS_stringcmdrate_avg_punish // Time in minutes for which the player will be banned (0 - Permanent, use a negative number for a kick). Default: 5
+<li>sv_ReHLDS_stringcmdrate_max_burst // Max burst level of 'string' cmds for ban. Default: 400
+<li>sv_ReHLDS_stringcmdrate_burst_punish // Time in minutes for which the player will be banned (0 - Permanent, use a negative number for a kick). Default: 5
+<li>sv_ReHLDS_userinfo_transmitted_fields // Userinfo fields only with these keys will be transmitted to clients via network. If not set then all fields will be transmitted (except prefixed with underscore). Each key must be prefixed by backslash, for example "\name\model\*sid\*hltv\bottomcolor\topcolor". See [wiki](https://github.com/dreamstalker/ReHLDS/wiki/Userinfo-keys) to collect sufficient set of keys for your server. Default: ""
+<li>sv_ReHLDS_attachedentities_playeranimationspeed_fix // Fixes bug with gait animation speed increase when player has some attached entities (aiments). Can cause animation lags when cl_updaterate is low. Default: 0
+<li>sv_ReHLDS_maxclients_from_single_ip // Limit number of connections at the same time from single IP address, not confuse to already connected players. Default: 5
+<li>sv_ReHLDS_local_gametime &lt;1|0&gt; // A feature of local gametime which decrease "lags" if you run same map for a long time. Default: 0
 <li>sv_use_entity_file // Use custom entity file for a map. Path to an entity file will be "maps/[map name].ent". 0 - use original entities. 1 - use .ent files from maps directory. 2 - use .ent files from maps directory and create new .ent file if not exist.
 <li>sv_usercmd_custom_random_seed // When enabled server will populate an additional random seed independent of the client. Default: 0
 <li>sv_net_incoming_decompression <1|0> // When enabled server will decompress of incoming compressed file transfer payloads. Default: 1
@@ -83,7 +83,7 @@ This means that plugins that do binary code analysis (Orpheu for example) probab
 
 ## Build instructions
 ### Checking requirements
-There are several software requirements for building rehlds:
+There are several software requirements for building ReHLDS:
 
 #### Windows
 <pre>
