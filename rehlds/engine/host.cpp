@@ -476,6 +476,9 @@ void SV_DropClient_internal(client_t *cl, qboolean crash, const char *string)
 
 		if (!cl->fakeclient)
 			Netchan_Transmit(&cl->netchan, i, final);
+
+		cl->network_userid.m_SteamIDValidated = 0;
+		host_client->network_userid.m_SteamIDValidated = 0;
 	}
 
 	connection_time = realtime - cl->netchan.connect_time;

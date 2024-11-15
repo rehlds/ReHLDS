@@ -23,8 +23,8 @@ TEST(StructOffsets, ReversingChecks, 5000)
 	CHECK_STRUCT_OFFSET(client_t, active, 0, 0);
 	CHECK_STRUCT_OFFSET(client_t, chokecount, 0x2540, 0x2430);
 	CHECK_STRUCT_OFFSET(client_t, datagram, 0x25C0, 0x24AC);
-	CHECK_STRUCT_OFFSET(client_t, m_VoiceStreams, 0x5000, 0x4EE0);
-	CHECK_STRUCT_OFFSET(client_t, m_lastvoicetime, 0x5008, 0x4EE8);
+	CHECK_STRUCT_OFFSET(client_t, m_VoiceStreams, 0x5008, 0x4EE8);
+	CHECK_STRUCT_OFFSET(client_t, m_lastvoicetime, 0x5010, 0x4EF0);
 	CHECK_STRUCT_OFFSET(client_t, datagram_buf, 0x25D4, 0x24C0);
 	CHECK_STRUCT_OFFSET(client_t, connection_started, 0x3578, 0x3460);
 

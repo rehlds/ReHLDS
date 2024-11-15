@@ -2539,7 +2539,7 @@ void EXT_FUNC SV_ConnectClient_internal(void)
 	host_client->userinfo[MAX_INFO_STRING - 1] = 0;
 
 	SV_ExtractFromUserinfo(host_client);
-	Info_SetValueForStarKey(host_client->userinfo, "*sid", va("%lld", host_client->network_userid.m_SteamID), MAX_INFO_STRING);
+	Info_SetValueForStarKey(host_client->userinfo, "*sid", va("%lld", host_client->network_userid.m_SteamIDValidated), MAX_INFO_STRING);
 
 	host_client->datagram.flags = SIZEBUF_ALLOW_OVERFLOW;
 	host_client->datagram.data = (byte *)host_client->datagram_buf;
@@ -8432,13 +8432,13 @@ char* EXT_FUNC SV_GetIDString_internal(USERID_t *id)
 		{
 			Q_strncpy(idstr, "STEAM_ID_LAN", ARRAYSIZE(idstr) - 1);
 		}
-		else if (!id->m_SteamID)
+		else if (!id->m_SteamIDValidated)
 		{
 			Q_strncpy(idstr, "STEAM_ID_PENDING", ARRAYSIZE(idstr) - 1);
 		}
 		else
 		{
-			TSteamGlobalUserID steam2ID = Steam_Steam3IDtoSteam2(id->m_SteamID);
+			TSteamGlobalUserID steam2ID = Steam_Steam3IDtoSteam2(id->m_SteamIDValidated);
 			Q_snprintf(idstr, ARRAYSIZE(idstr) - 1, "STEAM_%u:%u:%u", steam2ID.m_SteamInstanceID, steam2ID.m_SteamLocalUserID.Split.High32bits, steam2ID.m_SteamLocalUserID.Split.Low32bits);
 		}
 		break;
@@ -8447,13 +8447,13 @@ char* EXT_FUNC SV_GetIDString_internal(USERID_t *id)
 		{
 			Q_strncpy(idstr, "VALVE_ID_LAN", ARRAYSIZE(idstr) - 1);
 		}
-		else if (!id->m_SteamID)
+		else if (!id->m_SteamIDValidated)
 		{
 			Q_strncpy(idstr, "VALVE_ID_PENDING", ARRAYSIZE(idstr) - 1);
 		}
 		else
 		{
-			TSteamGlobalUserID steam2ID = Steam_Steam3IDtoSteam2(id->m_SteamID);
+			TSteamGlobalUserID steam2ID = Steam_Steam3IDtoSteam2(id->m_SteamIDValidated);
 			Q_snprintf(idstr, ARRAYSIZE(idstr) - 1, "VALVE_%u:%u:%u", steam2ID.m_SteamInstanceID, steam2ID.m_SteamLocalUserID.Split.High32bits, steam2ID.m_SteamLocalUserID.Split.Low32bits);
 		}
 		break;
