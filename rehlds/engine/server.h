@@ -31,7 +31,7 @@
 #include "maintypes.h"
 
 // TODO: I think this defines must be in /common/
-const int NUM_EDICTS = 900;
+const int NUM_EDICTS = 1200;
 const int MAX_NAME   = 32;
 
 #include "custom_int.h"
