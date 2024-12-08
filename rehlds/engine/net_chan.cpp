@@ -1596,8 +1596,31 @@ qboolean Netchan_CopyFileFragments(netchan_t *chan)
 
 	Q_strncpy(compressor, MSG_ReadString(), sizeof(compressor) - 1);
 	compressor[sizeof(compressor) - 1] = 0;
+
+	qboolean success = TRUE;
+
 	if (!Q_stricmp(compressor, "bz2"))
+	{
+
+#ifdef REHLDS_FIXES
+		if (!sv_net_incoming_decompression.value)
+		{
+			if (chan->player_slot == 0)
+			{
+				Con_DPrintf("Incoming compressed data disallowed from\n");
+				return FALSE;
+			}
+			// compressed data is expected only after requesting resource list
+			else if (host_client->m_sendrescount == 0)
+			{
+				Con_DPrintf("%s:Incoming compressed data disallowed from %s\n", NET_AdrToString(chan->remote_address), host_client->name);
+				return FALSE;
+			}
+		}
+#endif
+
 		bCompressed = TRUE;
+	}
 
 	uncompressedSize = (unsigned int)MSG_ReadLong();
 
@@ -1702,11 +1725,57 @@ qboolean Netchan_CopyFileFragments(netchan_t *chan)
 	if (bCompressed)
 	{
 		unsigned char* uncompressedBuffer = (unsigned char*)Mem_Malloc(uncompressedSize);
-		Con_DPrintf("Decompressing file %s (%d -> %d)\n", filename, nsize, uncompressedSize);
-		BZ2_bzBuffToBuffDecompress((char*)uncompressedBuffer, &uncompressedSize, (char*)buffer, nsize, 1, 0);
-		Mem_Free(buffer);
-		pos = uncompressedSize;
-		buffer = uncompressedBuffer;
+
+		if (success && (BZ2_bzBuffToBuffDecompress((char*)uncompressedBuffer, &uncompressedSize, (char*)buffer, nsize, 1, 0) == BZ_OK))
+		{
+			Con_DPrintf("Decompressing file %s (%d -> %d)\n", filename, nsize, uncompressedSize);
+#ifdef REHLDS_FIXES
+			// Check for an abnormal size ratio between compressed and uncompressed data
+			if (sv_net_incoming_decompression_max_ratio.value > 0 && nsize < uncompressedSize)
+			{
+				float ratio = ((float)(uncompressedSize - nsize) / uncompressedSize) * 100.0f;
+				if (ratio >= sv_net_incoming_decompression_max_ratio.value)
+				{
+					if (chan->player_slot == 0)
+						Con_DPrintf("Incoming abnormal uncompressed size with ratio %.2f\n", ratio);
+					else
+						Con_DPrintf("%s:Incoming abnormal uncompressed size with ratio %.2f from %s\n", NET_AdrToString(chan->remote_address), ratio, host_client->name);
+
+					success = FALSE;
+				}
+			}
+#endif
+
+			Mem_Free(buffer);
+			pos = uncompressedSize;
+			buffer = uncompressedBuffer;
+		}
+		else
+		{
+			// malformed data or compressed data exceeding sv_net_incoming_decompression_max_size
+			success = FALSE;
+		}
+
+		// Drop client if decompression was unsuccessful
+		if (!success)
+		{
+			if ((chan->player_slot - 1) == host_client - g_psvs.clients)
+			{
+#ifdef REHLDS_FIXES
+				if (sv_net_incoming_decompression_punish.value >= 0)
+				{
+					Con_DPrintf("%s:Banned for malformed/abnormal bzip2 fragments from %s\n", NET_AdrToString(chan->remote_address), host_client->name);
+					Cbuf_AddText(va("addip %.1f %s\n", sv_net_incoming_decompression_punish.value, NET_BaseAdrToString(chan->remote_address)));
+				}
+#endif
+
+				SV_DropClient(host_client, FALSE, "Malformed/abnormal compressed data");
+			}
+
+			Netchan_FlushIncoming(chan, FRAG_FILE_STREAM);
+		}
+
+		return success;
 	}
 
 	if (filename[0] == '!')
