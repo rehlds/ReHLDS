@@ -528,6 +528,7 @@ RehldsFuncs_t g_RehldsApiFuncs =
 	&RemoveExtDll_api,
 	&RemoveCvarListener_api,
 	&GetEntityInit_api,
+	&Host_Pause_api,
 	&MSG_ReadChar_api,
 	&MSG_ReadByte_api,
 	&MSG_ReadLong_api,
