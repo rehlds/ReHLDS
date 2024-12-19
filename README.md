@@ -8,6 +8,15 @@ Along with reverse engineering, a lot of defects and (potential) bugs were found
 
 You can try playing on one of many servers that are using ReHLDS: [Game Tracker](http://www.gametracker.com/search/?search_by=server_variable&search_by2=sv_version)
 
+> [!TIP]
+> ReHLDS linux-releases now is signed via `GPG`, pubkey is: `63547829004f07716f7be4856c32c4282e60fb67` and could be found at [https://keyserver.ubuntu.com/](https://keyserver.ubuntu.com/pks/lookup?search=63547829004f07716f7be4856c32c4282e60fb67+&fingerprint=on&op=index).
+>
+> How to:
+> 1. [Download](https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x63547829004f07716f7be4856c32c4282e60fb67) `63547829004f07716f7be4856c32c4282e60fb67.asc` key
+> 2. Import: `gpg --import 63547829004f07716f7be4856c32c4282e60fb67.asc`
+> 3. Download release `archive` and `.asc` file.
+> 4. Verify: `gpg --verify some-rehlds.zip.asc some-rehlds.zip`.
+
 ## Goals of the project
 <ul>
 <li>Provide more stable (than official) version of Half-Life dedicated server with extended API for mods and plugins</li>
@@ -17,7 +26,8 @@ You can try playing on one of many servers that are using ReHLDS: [Game Tracker]
 ## How can use it?
 ReHLDS is fully compatible with the official pre-anniversary edition of HLDS (engine version <= 8684) downloaded by steamcmd. All you have to do is to download ReHLDS binaries and replace original swds.dll/engine_i486.so. For windows you can also copy a swds.pdb file with a debug information.
 
-<b>Warning!</b> ReHLDS is not compatible with an old 5xxx or below platforms downloaded by hldsupdatetool.
+> [!CAUTION]  
+> ReHLDS is not compatible with an old 5xxx or below platforms downloaded by hldsupdatetool.
 
 #### Downloading HLDS via steamcmd
 
