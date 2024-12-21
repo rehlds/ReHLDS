@@ -146,34 +146,40 @@ void alarmFunc(int num)
 
 }
 
+void Sleep_Pingboost4(int msec);
+
 void Sys_InitPingboost()
 {
-	Sys_Sleep = Sleep_Old;
+    Sys_Sleep = Sleep_Old;
 
-	char *pPingType;
-	if (CommandLine()->CheckParm("-pingboost", &pPingType) && pPingType) {
-		int type = Q_atoi(pPingType);
-		switch (type) {
-		case 1:
-			signal(SIGALRM, alarmFunc);
-			Sys_Sleep = Sleep_Timer;
-			break;
-		case 2:
-			Sys_Sleep = Sleep_Select;
-			break;
-		case 3:
-			Sys_Sleep = Sleep_Net;
+    char* pPingType;
+    if (CommandLine()->CheckParm("-pingboost", &pPingType) && pPingType) {
+        int type = Q_atoi(pPingType);
+        switch (type) {
+        case 1:
+            signal(SIGALRM, alarmFunc);
+            Sys_Sleep = Sleep_Timer;
+            break;
+        case 2:
+            Sys_Sleep = Sleep_Select;
+            break;
+        case 3:
+            Sys_Sleep = Sleep_Net;
+            NET_Sleep_Timeout = (NET_Sleep_t)Sys_GetProcAddress(g_pEngineModule, "NET_Sleep_Timeout");
+            break;
+        case 4: // New case for -pingboost 4
+            Sys_Sleep = Sleep_Pingboost4;
+            break;
+        default:
+            Sys_Sleep = Sleep_Old;
+            break;
+        }
+    }
+}
 
-			// we Sys_GetProcAddress NET_Sleep() from
-			//engine_i486.so later in this function
-			NET_Sleep_Timeout = (NET_Sleep_t)Sys_GetProcAddress(g_pEngineModule, "NET_Sleep_Timeout");
-			break;
-		// just in case
-		default:
-			Sys_Sleep = Sleep_Old;
-			break;
-		}
-	}
+void Sleep_Pingboost4(int msec)
+{
+    // Do nothing, just return without sleep
 }
 
 void Sys_WriteProcessIdFile()
