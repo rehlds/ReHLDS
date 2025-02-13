@@ -374,6 +374,7 @@ extern cvar_t sv_rehlds_attachedentities_playeranimationspeed_fix;
 extern cvar_t sv_rehlds_local_gametime;
 extern cvar_t sv_rehlds_send_mapcycle;
 extern cvar_t sv_usercmd_custom_random_seed;
+extern cvar_t sv_rehlds_allow_large_sprays;
 #endif
 extern int sv_playermodel;
 
