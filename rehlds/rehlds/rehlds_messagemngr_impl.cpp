@@ -267,9 +267,9 @@ private:
 	};
 #pragma pack(pop)
 
-	static const size_t MAX_PARAMS = 16; // The maximum number of parameters allowed in the message
+	static const size_t MAX_PARAMS = 32; // The maximum number of parameters allowed in the message
 	Param_t m_params[MAX_PARAMS]{};      // The array of parameters in the message
-	size_t  m_paramCount : 4;            // The number of parameters in the message
+	size_t  m_paramCount : 5;            // The number of parameters in the message
 
 	void resetParam(size_t index);
 
