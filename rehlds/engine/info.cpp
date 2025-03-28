@@ -856,6 +856,12 @@ qboolean Info_IsValid(const char *s)
 		return false;
 	};
 
+	// invalid utf8 chars are deprecated
+	if (!Q_UnicodeValidate(s))
+	{
+		return FALSE;
+	}
+
 	while (*s == '\\')
 	{
 		const char* key = ++s;
