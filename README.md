@@ -147,6 +147,7 @@ sudo apt-get update
 sudo apt-get install -y gcc-multilib g++-multilib
 sudo apt-get install -y build-essential
 sudo apt-get install -y libc6-dev libc6-dev-i386
+sudo apt-get install -y cmake			
 </pre>
 </li>
 
