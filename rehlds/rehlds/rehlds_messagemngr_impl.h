@@ -93,7 +93,7 @@ private:
 	bool MessageEnd();
 
 private:
-	bool WriteParam(IMessage::ParamType type, size_t length = -1);
+	bool WriteParam(IMessage::ParamType type, bool sign = false, size_t length = -1);
 
 	bool m_inblock; // Flag indicating whether a message block is currently active
 	bool m_inhook;  // Flag indicating whether a message hook is currently active

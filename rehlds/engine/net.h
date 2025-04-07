@@ -422,6 +422,7 @@ typedef struct netchan_s
 
 	// Incoming and outgoing flow metrics
 	flow_t flow[MAX_FLOWS];
+
 } netchan_t;
 
 #ifdef REHLDS_FIXES

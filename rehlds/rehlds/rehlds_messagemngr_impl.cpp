@@ -213,13 +213,13 @@ private:
 	void setCopybackBuffer(sizebuf_t *pbuf);
 
 	// Adds a parameter to the message
-	void addParam(IMessage::ParamType type, size_t length);
+	void addParam(IMessage::ParamType type, bool sign, size_t length);
 
 	// Clears the message after execution
 	void clear();
 
 	template <typename T>
-	void setParamPrimitive(size_t index, T value);
+	void setParamPrimitive(size_t index, T value, bool sign = false);
 
 	// Transforms buffer after sets string for a parameter at the given index
 	void setTxformBuffer(size_t index, size_t startPos, size_t oldLength, size_t newLength);
@@ -263,6 +263,7 @@ private:
 		size_t		posFront : 9; // The stock position of the parameter in the buffer
 		size_t		oldlen   : 9; // The length of the parameter in the buffer
 		size_t		newlen   : 9; // The length of the parameter in the buffer
+		bool		sign[MAX_STORAGE]; // Flag indicating that it has a signed value
 	};
 #pragma pack(pop)
 
@@ -369,17 +370,31 @@ static size_t SIZEOF_PARAMTYPE[] =
 };
 
 // Adds a parameter to the message
-void MessageImpl::addParam(IMessage::ParamType type, size_t length)
+void MessageImpl::addParam(IMessage::ParamType type, bool sign, size_t length)
 {
 	Param_t &param = m_params[m_paramCount++];
-	param.type     = type;
-	param.newlen   = param.oldlen = (length == -1) ? SIZEOF_PARAMTYPE[static_cast<size_t>(type)] : length;
-	param.posBack  = param.posFront = gMsgBuffer.cursize;
+	param.type       = type;
+	param.newlen     = param.oldlen = (length == -1) ? SIZEOF_PARAMTYPE[static_cast<size_t>(type)] : length;
+	param.posBack    = param.posFront = gMsgBuffer.cursize;
+	param.sign[BACK] = param.sign[FRONT] = sign;
+}
+
+template <typename T>
+inline void setValue(void *pbuf, T value)
+{
+	*static_cast<T *>(pbuf) = value;
+}
+
+template <typename T>
+inline int getValueInt(const void *pbuf, bool sign = false)
+{
+	return sign ?
+		*static_cast<const T *>(pbuf) : *static_cast<std::make_unsigned_t<const T> *>(pbuf);
 }
 
 // Sets the value of a primitive parameter at the given index
 template <typename T>
-void MessageImpl::setParamPrimitive(size_t index, T value)
+void MessageImpl::setParamPrimitive(size_t index, T value, bool sign)
 {
 	// Ensure index is within bounds
 	if (index >= m_paramCount)
@@ -392,29 +407,31 @@ void MessageImpl::setParamPrimitive(size_t index, T value)
 	switch (param.type)
 	{
 	case IMessage::ParamType::Byte:
-		*(uint8 *)pbuf = value;
+		setValue<uint8>(pbuf, value);
 		break;
 	case IMessage::ParamType::Char:
-		*(int8 *)pbuf = value;
+		setValue<int8>(pbuf, value);
 		break;
 	case IMessage::ParamType::Short:
 	case IMessage::ParamType::Entity:
-		*(int16 *)pbuf = value;
+		setValue<int16>(pbuf, value);
 		break;
 	case IMessage::ParamType::Long:
-		*(uint32 *)pbuf = value;
+		setValue<uint32>(pbuf, value);
 		break;
 	case IMessage::ParamType::Angle:
 		// Convert angle value to byte representation with loss of precision
-		*(uint8 *)pbuf = (int64)(fmod((double)value, 360.0) * 256.0 / 360.0) & 0xff;
+		setValue<uint8>(pbuf, (int64)(fmod((double)value, 360.0) * 256.0 / 360.0) & 0xff);
 		break;
 	case IMessage::ParamType::Coord:
 		// Convert coordinate value to short integer representation with loss of precision
-		*(int16 *)pbuf = (int16)(int)(value * 8.0);
+		setValue<int16>(pbuf, (int)(value * 8.0));
 		break;
 	default:
 		return; // bad type
 	}
+
+	param.sign[BACK] = sign;
 
 	// Mark message as modified
 	param.modified = true;
@@ -469,14 +486,14 @@ int MessageImpl::getParamInt(size_t index) const
 	switch (param.type)
 	{
 	case IMessage::ParamType::Byte:
-		return *(uint8  *)buf;
+		return getValueInt<uint8>(buf);
 	case IMessage::ParamType::Char:
-		return *(int8   *)buf;
+		return getValueInt<int8>(buf, param.sign[BACK]);
 	case IMessage::ParamType::Short:
 	case IMessage::ParamType::Entity:
-		return *(int16  *)buf;
+		return getValueInt<int16>(buf, param.sign[BACK]);
 	case IMessage::ParamType::Long:
-		return *(uint32 *)buf;
+		return getValueInt<uint32>(buf);
 	default:
 		return 0; // bad type
 	}
@@ -495,9 +512,9 @@ float MessageImpl::getParamFloat(size_t index) const
 	switch (param.type)
 	{
 	case IMessage::ParamType::Angle:
-		return (float)(*(uint8 *)buf * (360.0 / 256.0));
+		return (float)((uint8)getValueInt<uint8>(buf) * (360.0 / 256.0));
 	case IMessage::ParamType::Coord:
-		return (float)(*(int16 *)buf * (1.0 / 8));
+		return (float)((int16)getValueInt<int16>(buf) * (1.0 / 8));
 	default:
 		break; // bad type
 	}
@@ -532,14 +549,14 @@ int MessageImpl::getOriginalParamInt(size_t index) const
 	switch (param.type)
 	{
 	case IMessage::ParamType::Byte:
-		return *(uint8  *)buf;
+		return getValueInt<uint8>(buf);
 	case IMessage::ParamType::Char:
-		return *(int8   *)buf;
+		return getValueInt<int8>(buf, param.sign[FRONT]);
 	case IMessage::ParamType::Short:
 	case IMessage::ParamType::Entity:
-		return *(int16  *)buf;
+		return getValueInt<int16>(buf, param.sign[FRONT]);
 	case IMessage::ParamType::Long:
-		return *(uint32 *)buf;
+		return getValueInt<uint32>(buf);
 	default:
 		return 0; // bad type
 	}
@@ -557,9 +574,9 @@ float MessageImpl::getOriginalParamFloat(size_t index) const
 	switch (param.type)
 	{
 	case IMessage::ParamType::Angle:
-		return (float)(*(uint8 *)buf * (360.0 / 256.0));
+		return (float)((uint8)getValueInt<uint8>(buf) * (360.0 / 256.0));
 	case IMessage::ParamType::Coord:
-		return (float)(*(int16 *)buf * (1.0 / 8));
+		return (float)((int16)getValueInt<int16>(buf) * (1.0 / 8));
 	default:
 		break; // bad type
 	}
@@ -584,7 +601,7 @@ const char *MessageImpl::getOriginalParamString(size_t index) const
 // Sets the integer value of the parameter at the given index
 void MessageImpl::setParamInt(size_t index, int value)
 {
-	setParamPrimitive(index, value);
+	setParamPrimitive(index, value, value < 0);
 }
 
 // Sets the float value of the parameter at the given index
@@ -710,23 +727,23 @@ void MessageImpl::resetParam(size_t index)
 	switch (param.type)
 	{
 	case IMessage::ParamType::Byte:
-		*(uint8 *)pbackbuf = *(uint8 *)pfrontbuf;
+		setValue<uint8>(pbackbuf, getValueInt<uint8>(pfrontbuf));
 		break;
 	case IMessage::ParamType::Char:
-		*(int8 *)pbackbuf = *(int8 *)pfrontbuf;
+		setValue<int8>(pbackbuf, getValueInt<int8>(pfrontbuf));
 		break;
 	case IMessage::ParamType::Short:
 	case IMessage::ParamType::Entity:
-		*(int16 *)pbackbuf = *(int16 *)pfrontbuf;
+		setValue<int16>(pbackbuf, getValueInt<int16>(pfrontbuf));
 		break;
 	case IMessage::ParamType::Long:
-		*(uint32 *)pbackbuf = *(uint32 *)pfrontbuf;
+		setValue<uint32>(pbackbuf, getValueInt<uint32>(pfrontbuf));
 		break;
 	case IMessage::ParamType::Angle:
-		*(uint8 *)pbackbuf = *(uint8 *)pfrontbuf;
+		setValue<uint8>(pbackbuf, getValueInt<uint8>(pfrontbuf));
 		break;
 	case IMessage::ParamType::Coord:
-		*(int16 *)pbackbuf = *(int16 *)pfrontbuf;
+		setValue<int16>(pbackbuf, getValueInt<int16>(pfrontbuf));
 		break;
 	case IMessage::ParamType::String:
 		// Return the original string value from the front buffer
@@ -740,6 +757,8 @@ void MessageImpl::resetParam(size_t index)
 
 	// Unmark message as modified
 	param.modified = false;
+
+	param.sign[BACK] = param.sign[FRONT];
 }
 
 // Resets a specific message parameter to its original value
@@ -955,7 +974,7 @@ bool MessageManagerImpl::MessageEnd()
 	return false;
 }
 
-bool MessageManagerImpl::WriteParam(IMessage::ParamType type, size_t length)
+bool MessageManagerImpl::WriteParam(IMessage::ParamType type, bool sign, size_t length)
 {
 	// Check if in block mode
 	if (m_inblock)
@@ -966,7 +985,7 @@ bool MessageManagerImpl::WriteParam(IMessage::ParamType type, size_t length)
 	{
 		// Add parameter to top stack message
 		MessageImpl &msg = m_stack.top();
-		msg.addParam(type, length);
+		msg.addParam(type, sign, length);
 	}
 
 	return true;
@@ -1002,13 +1021,13 @@ void EXT_FUNC PF_WriteByte_Intercept(int iValue)
 
 void EXT_FUNC PF_WriteChar_Intercept(int iValue)
 {
-	if (MessageManager().WriteParam(IMessage::ParamType::Char))
+	if (MessageManager().WriteParam(IMessage::ParamType::Char, iValue < 0))
 		PF_WriteChar_I(iValue);
 }
 
 void EXT_FUNC PF_WriteShort_Intercept(int iValue)
 {
-	if (MessageManager().WriteParam(IMessage::ParamType::Short))
+	if (MessageManager().WriteParam(IMessage::ParamType::Short, iValue < 0))
 		PF_WriteShort_I(iValue);
 }
 
@@ -1032,13 +1051,13 @@ void EXT_FUNC PF_WriteCoord_Intercept(float flValue)
 
 void EXT_FUNC PF_WriteString_Intercept(const char *sz)
 {
-	if (MessageManager().WriteParam(IMessage::ParamType::String, sz ? Q_strlen(sz) + 1 : 1))
+	if (MessageManager().WriteParam(IMessage::ParamType::String, false, sz ? Q_strlen(sz) + 1 : 1))
 		PF_WriteString_I(sz);
 }
 
 void EXT_FUNC PF_WriteEntity_Intercept(int iValue)
 {
-	if (MessageManager().WriteParam(IMessage::ParamType::Entity))
+	if (MessageManager().WriteParam(IMessage::ParamType::Entity, iValue < 0))
 		PF_WriteEntity_I(iValue);
 }
 

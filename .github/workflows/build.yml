@@ -10,6 +10,7 @@ on:
     types: [opened, reopened, synchronize]
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   windows:
@@ -24,6 +25,9 @@ jobs:
       buildTest: 'Test Fixes'
 
     steps:
+      - name: Configure
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -45,6 +49,11 @@ jobs:
         run: |
           msbuild ${{ env.solution }} -p:Configuration="${{ env.buildRelease }}" /t:Clean,Build /p:Platform=${{ env.buildPlatform }} /p:PlatformToolset=v140_xp /p:XPDeprecationWarning=false
           msbuild ${{ env.solution }} -p:Configuration="${{ env.buildReleasePlay }}" /t:Clean,Build /p:Platform=${{ env.buildPlatform }} /p:PlatformToolset=v140_xp /p:XPDeprecationWarning=false
+
+      - name: Get rcedit from chocolatey
+        run: |
+          choco install rcedit -y
+        shell: "pwsh"
 
       - name: Move files
         run: |
@@ -69,6 +78,40 @@ jobs:
           move msvc\${{ env.buildRelease }}\filesystem_stdio.pdb publish\debug\filesystem_stdio.pdb
           move msvc\${{ env.buildRelease }}\director.pdb publish\debug\director.pdb
 
+      # TODO: Set version to exe dynamicly: 0.0.0.0 to normal version such as at linux
+      - name: Edit resources at windows binaries
+        run: |
+         rcedit ${{ github.workspace }}\publish\bin\win32\hlds.exe --set-version-string ProductName "ReHLDS" --set-file-version "0.0.0.0" --set-product-version "0.0.0.0" --set-version-string FileDescription "The Half-Life Dedicated Server, Commit: $env:GITHUB_SHA" --set-version-string "Comments" "Commit: $env:GITHUB_SHA" --set-version-string CompanyName "ReHLDS Dev Team" --set-version-string LegalCopyright "Copyright 2025 Valve, ReHLDS DevTeam"
+         rcedit ${{ github.workspace }}\publish\bin\win32\hltv.exe --set-version-string ProductName "ReHLTV" --set-file-version "0.0.0.0" --set-product-version "0.0.0.0" --set-version-string FileDescription "The Half-Life TV, Commit: $env:GITHUB_SHA" --set-version-string "Comments" "Commit: $env:GITHUB_SHA" --set-version-string CompanyName "ReHLDS Dev Team" --set-version-string LegalCopyright "Copyright 2025 Valve, ReHLDS DevTeam"
+         rcedit ${{ github.workspace }}\publish\tests\swds.dll --set-version-string ProductName "swds.dll" --set-file-version "0.0.0.0" --set-product-version "0.0.0.0" --set-version-string FileDescription "A dll used by Steamworks Dedicated Servers, Commit: $env:GITHUB_SHA" --set-version-string "Comments" "Commit: $env:GITHUB_SHA" --set-version-string CompanyName "ReHLDS Dev Team" --set-version-string LegalCopyright "Copyright 2025 Valve, ReHLDS DevTeam" --set-icon rehlds/dedicated/msvc/icon.ico
+         rcedit ${{ github.workspace }}\publish\bin\win32\swds.dll --set-version-string ProductName "swds.dll" --set-file-version "0.0.0.0" --set-product-version "0.0.0.0" --set-version-string FileDescription "A ddll used by Steamworks Dedicated Servers, Commit: $env:GITHUB_SHA" --set-version-string "Comments" "Commit: $env:GITHUB_SHA" --set-version-string CompanyName "ReHLDS Dev Team" --set-version-string LegalCopyright "Copyright 2025 Valve, ReHLDS DevTeam" --set-icon rehlds/dedicated/msvc/icon.ico
+         rcedit ${{ github.workspace }}\publish\bin\win32\core.dll --set-version-string ProductName "core.dll" --set-file-version "0.0.0.0" --set-product-version "0.0.0.0" --set-version-string FileDescription " A dll, it is a core of game engine, Commit: $env:GITHUB_SHA" --set-version-string "Comments" "Commit: $env:GITHUB_SHA" --set-version-string CompanyName "ReHLDS Dev Team" --set-version-string LegalCopyright "Copyright 2025 Valve, ReHLDS DevTeam" --set-icon rehlds/dedicated/msvc/icon.ico
+         rcedit ${{ github.workspace }}\publish\bin\win32\proxy.dll --set-version-string ProductName "proxy.dll" --set-file-version "0.0.0.0" --set-product-version "0.0.0.0" --set-version-string FileDescription "A dll for proxying network connections, Commit: $env:GITHUB_SHA" --set-version-string "Comments" "Commit: $env:GITHUB_SHA" --set-version-string CompanyName "ReHLDS Dev Team" --set-version-string LegalCopyright "Copyright 2025 Valve, ReHLDS DevTeam" --set-icon rehlds/dedicated/msvc/icon.ico
+         rcedit ${{ github.workspace }}\publish\bin\win32\demoplayer.dll --set-version-string ProductName "demoplayer.dll" --set-file-version "0.0.0.0" --set-product-version "0.0.0.0" --set-version-string FileDescription "A dll for demoplayer functionality, Commit: $env:GITHUB_SHA" --set-version-string "Comments" "Commit: $env:GITHUB_SHA" --set-version-string CompanyName "ReHLDS Dev Team" --set-version-string LegalCopyright "Copyright 2025 Valve, ReHLDS DevTeam" --set-icon rehlds/dedicated/msvc/icon.ico
+         rcedit ${{ github.workspace }}\publish\bin\win32\filesystem_stdio.dll --set-version-string ProductName "filesystem_stdio.dll" --set-file-version "0.0.0.0" --set-product-version "0.0.0.0" --set-version-string FileDescription "A dll that manages file input/output operations, Commit: $env:GITHUB_SHA" --set-version-string "Comments" "Commit: $env:GITHUB_SHA" --set-version-string CompanyName "ReHLDS Dev Team" --set-version-string LegalCopyright "Copyright 2025 Valve, ReHLDS DevTeam" --set-icon rehlds/dedicated/msvc/icon.ico
+         rcedit ${{ github.workspace }}\publish\bin\win32\valve\dlls\director.dll --set-version-string ProductName "director.dll" --set-file-version "0.0.0.0" --set-product-version "0.0.0.0" --set-version-string FileDescription "A dll used for Director functionality in Half-Life 1, Commit: $env:GITHUB_SHA" --set-version-string "Comments" "Commit: $env:GITHUB_SHA" --set-version-string CompanyName "ReHLDS Dev Team" --set-version-string LegalCopyright "Copyright 2025 Valve, ReHLDS DevTeam" --set-icon rehlds/dedicated/msvc/icon.ico
+        shell: "pwsh"
+
+      - name: Import PFX and sign
+        if: github.event_name != 'pull_request'
+        env:
+          KEY_PFX_PASS: ${{ secrets.KEY_PFX_PASS }}
+        run: |
+               $pfxBase64 = "${{ secrets.KEY_PFX_B64 }}"
+               [IO.File]::WriteAllBytes("${{ github.workspace }}\signing-cert.pfx", [Convert]::FromBase64String($pfxBase64))
+               certutil -f -p "${{ secrets.KEY_PFX_PASS }}" -importPFX "${{ github.workspace }}\signing-cert.pfx"
+               & 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x86\signtool.exe' sign /a /f "${{ github.workspace }}\signing-cert.pfx"  /p $env:KEY_PFX_PASS /d "ReHLDS" /du "https://rehlds.dev/" /tr "http://timestamp.digicert.com" /td sha512 /fd sha512 /v ${{ github.workspace }}\publish\bin\win32\hlds.exe
+               & 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x86\signtool.exe' sign /a /f "${{ github.workspace }}\signing-cert.pfx"  /p $env:KEY_PFX_PASS /d "reHLTV" /du "https://rehlds.dev/" /tr "http://timestamp.digicert.com" /td sha512 /fd sha512 /v ${{ github.workspace }}\publish\bin\win32\hltv.exe
+               & 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x86\signtool.exe' sign /a /f "${{ github.workspace }}\signing-cert.pfx"  /p $env:KEY_PFX_PASS /d "ReHLDS - swds.dll" /du "https://rehlds.dev/" /tr "http://timestamp.digicert.com" /td sha512 /fd sha512 /v ${{ github.workspace }}\publish\tests\swds.dll
+               & 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x86\signtool.exe' sign /a /f "${{ github.workspace }}\signing-cert.pfx"  /p $env:KEY_PFX_PASS /d "ReHLDS - swds.dll" /du "https://rehlds.dev/" /tr "http://timestamp.digicert.com" /td sha512 /fd sha512 /v ${{ github.workspace }}\publish\bin\win32\swds.dll
+               & 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x86\signtool.exe' sign /a /f "${{ github.workspace }}\signing-cert.pfx"  /p $env:KEY_PFX_PASS /d "ReHLDS - core.dll" /du "https://rehlds.dev/" /tr "http://timestamp.digicert.com" /td sha512 /fd sha512 /v ${{ github.workspace }}\publish\bin\win32\core.dll
+               & 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x86\signtool.exe' sign /a /f "${{ github.workspace }}\signing-cert.pfx"  /p $env:KEY_PFX_PASS /d "ReHLDS - proxy.dll" /du "https://rehlds.dev/" /tr "http://timestamp.digicert.com" /td sha512 /fd sha512 /v ${{ github.workspace }}\publish\bin\win32\proxy.dll
+               & 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x86\signtool.exe' sign /a /f "${{ github.workspace }}\signing-cert.pfx"  /p $env:KEY_PFX_PASS /d "ReHLDS - demoplayer.dll" /du "https://rehlds.dev/" /tr "http://timestamp.digicert.com" /td sha512 /fd sha512 /v ${{ github.workspace }}\publish\bin\win32\demoplayer.dll
+               & 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x86\signtool.exe' sign /a /f "${{ github.workspace }}\signing-cert.pfx"  /p $env:KEY_PFX_PASS /d "ReHLDS - filesystem_stdio.dll" /du "https://rehlds.dev/" /tr "http://timestamp.digicert.com" /td sha512 /fd sha512 /v ${{ github.workspace }}\publish\bin\win32\filesystem_stdio.dll
+               & 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x86\signtool.exe' sign /a /f "${{ github.workspace }}\signing-cert.pfx"  /p $env:KEY_PFX_PASS /d "ReHLDS - director.dll" /du "https://rehlds.dev/" /tr "http://timestamp.digicert.com" /td sha512 /fd sha512 /v ${{ github.workspace }}\publish\bin\win32\valve\dlls\director.dll
+               Remove-Item -Recurse -Force "${{ github.workspace }}\signing-cert.pfx"
+        shell: "pwsh"
+
       - name: Deploy artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -77,7 +120,7 @@ jobs:
 
   testdemos:
     name: 'Test demos'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: rehldsorg/testdemos:latest
     needs: [windows]
     defaults:
@@ -115,15 +158,10 @@ jobs:
 
   linux:
     name: 'Linux'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: debian:11-slim
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Install dependencies
         run: |
           dpkg --add-architecture i386
@@ -134,6 +172,57 @@ jobs:
             libc6-dev libc6-dev-i386 \
             git cmake rsync \
             g++ gcc
+
+      - name: Configure
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: GPG Import
+        run: |
+          echo "${{ secrets.PUB_ASC }}" > "${{ secrets.PUB_ASC_FILE }}"
+          echo "${{ secrets.KEY_ASC }}" > "${{ secrets.KEY_ASC_FILE }}"
+
+          # Import the public key
+          gpg --batch --yes --import "${{ secrets.PUB_ASC_FILE }}"
+          if [[ $? -ne 0 ]]; then
+            echo "Error: Failed to import the public key"
+            exit 1
+          fi
+          
+          # Import the private key
+          gpg --batch --yes --import "${{ secrets.KEY_ASC_FILE }}"
+          if [[ $? -ne 0 ]]; then
+            echo "Error: Failed to import the private key"
+            exit 2
+          fi
+          
+          # Extract the fingerprint of the imported public key
+          GPG_LINUX_FINGERPRINT=$(gpg --list-keys --with-colons | grep '^fpr' | head -n 1 | cut -d: -f10)
+          
+          # Check if the fingerprint was extracted
+          if [[ -z "$GPG_LINUX_FINGERPRINT" ]]; then
+            echo "Error: Failed to extract the fingerprint of the key"
+            exit 3
+          fi
+          
+          # Set the trust level for the key
+          echo "$GPG_LINUX_FINGERPRINT:6:" | gpg --batch --import-ownertrust
+          if [ $? -ne 0 ]; then
+            echo "Error: Failed to set trust for the key $GPG_LINUX_FINGERPRINT"
+            exit 4
+          fi
+          
+          echo "Key $GPG_LINUX_FINGERPRINT successfully imported and trusted"
+          gpg --list-keys
+
+          #export for global use
+          echo "GPG_LINUX_FINGERPRINT=$GPG_LINUX_FINGERPRINT" >> $GITHUB_ENV
+        shell: bash
+        if: github.event_name != 'pull_request'
 
       - name: Build and Run unittests
         run: |
@@ -212,7 +301,7 @@ jobs:
 
   publish:
     name: 'Publish'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [windows, testdemos, linux]
 
     steps:
@@ -240,15 +329,42 @@ jobs:
           fi
           rm -f appversion.h
 
-      - name: Packaging bin/dbg
+      - name: Final signing and Packaging bin/dbg
         id: packaging-job
         if: |
           github.event_name == 'release' &&
           github.event.action == 'published' &&
           startsWith(github.ref, 'refs/tags/')
         run: |
+
+          # new runner, niw signs
+          echo "${{ secrets.PUB_ASC }}" > "${{ secrets.PUB_ASC_FILE }}"
+          echo "${{ secrets.KEY_ASC }}" > "${{ secrets.KEY_ASC_FILE }}"
+          gpg --batch --yes --import "${{ secrets.PUB_ASC_FILE }}"
+          gpg --batch --yes --import "${{ secrets.KEY_ASC_FILE }}"
+          GPG_LINUX_FINGERPRINT=$(gpg --list-keys --with-colons | grep '^fpr' | head -n 1 | cut -d: -f10)
+          echo "$GPG_LINUX_FINGERPRINT:6:" | gpg --batch --import-ownertrust
+          echo "GPG_LINUX_FINGERPRINT=$GPG_LINUX_FINGERPRINT" >> $GITHUB_ENV
+
+          sign_file() {
+            local file=$1
+            gpg --batch --yes --detach-sign --armor -u "$GPG_LINUX_FINGERPRINT" "$file"
+            if [ $? -ne 0 ]; then
+              echo "Error: Failed to sign $file"
+              exit 2
+            fi
+            echo "$file signed successfully."
+          }
+          
+          # Pack and sign final archive
           7z a -tzip rehlds-bin-${{ env.APP_VERSION }}.zip bin/ hlsdk/
+          sign_file "rehlds-bin-${{ env.APP_VERSION }}.zip"
+
+          # Pack and sign final archive
           7z a -t7z -m0=lzma2 -mx=9 -mfb=64 -aoa rehlds-dbg-${{ env.APP_VERSION }}.7z debug/
+          sign_file "rehlds-dbg-${{ env.APP_VERSION }}.7z"
+
+        shell: bash
 
       - name: Publish artifacts
         uses: softprops/action-gh-release@v2
@@ -260,5 +376,6 @@ jobs:
           files: |
             *.zip
             *.7z
+            *.asc
         env:
           GITHUB_TOKEN: ${{ secrets.API_TOKEN }}

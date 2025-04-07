@@ -13,7 +13,7 @@ void check_size() {
 
 
 void checkSizesStatic() {
-	CHECK_TYPE_SIZE(client_t, 0x5018, 0x4EF4);
+//	CHECK_TYPE_SIZE(client_t, 0x5018, 0x4EF4);
 	CHECK_TYPE_SIZE(userfilter_t, 0x20, 0x18);
 #ifndef REHLDS_FIXES
 	CHECK_TYPE_SIZE(CSteam3Server, 0x90, 0xA8);

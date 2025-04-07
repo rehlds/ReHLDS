@@ -184,7 +184,7 @@ typedef struct playermove_s
 
 	char			physinfo[ MAX_PHYSINFO_STRING ]; // Physics info string
 
-	struct movevars_s *_movevars;
+	struct movevars_s *movevars;
 	vec3_t player_mins[MAX_MAP_HULLS];
 	vec3_t player_maxs[MAX_MAP_HULLS];
 

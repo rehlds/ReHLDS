@@ -1768,7 +1768,7 @@ void NET_GetLocalAddress()
 
 	if (noip)
 	{
-		Con_Printf("TCP/IP Disabled.\n");
+		Con_DPrintf("TCP/IP Disabled.\n");
 	}
 	else
 	{
@@ -1823,7 +1823,7 @@ void NET_GetLocalAddress()
 #ifdef _WIN32
 	if (noipx)
 	{
-		Con_Printf("No IPX Support.\n");
+		Con_DPrintf("No IPX Support.\n");
 	}
 	else
 	{

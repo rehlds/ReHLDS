@@ -29,7 +29,7 @@
 #include "precompiled.h"
 
 playermove_t *pmove;
-movevars_t movevars;
+movevars_t sv_movevars;
 
 cvar_t pm_showclip = { "pm_showclip", "0", 0, 0.0f, NULL };
 
@@ -98,7 +98,7 @@ void PM_Init(playermove_t *ppm)
 		VectorCopy(player_maxs[i], ppm->player_maxs[i]);
 	}
 
-	ppm->_movevars = &movevars;
+	ppm->movevars = &sv_movevars;
 
 	ppm->PM_Info_ValueForKey = Info_ValueForKey;
 	ppm->PM_Particle = CL_Particle;

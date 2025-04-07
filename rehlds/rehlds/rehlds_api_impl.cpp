@@ -458,6 +458,16 @@ void EXT_FUNC RemoveCvarListener_api(const char *var_name, cvar_callback_t func)
 	}
 }
 
+void EXT_FUNC SV_SetMoveVars_api()
+{
+	SV_SetMoveVars(&sv_movevars);
+}
+
+void EXT_FUNC SV_WriteMovevarsToClient_api(sizebuf_t *message)
+{
+	SV_WriteMovevarsToClient(message, &sv_movevars);
+}
+
 CRehldsServerStatic g_RehldsServerStatic;
 CRehldsServerData g_RehldsServerData;
 CRehldsHookchains g_RehldsHookchains;
@@ -475,8 +485,8 @@ RehldsFuncs_t g_RehldsApiFuncs =
 	&SV_CheckChallenge_api,
 	&SV_SendUserReg,
 	&SV_WriteDeltaDescriptionsToClient,
-	&SV_SetMoveVars,
-	&SV_WriteMovevarsToClient,
+	&SV_SetMoveVars_api,
+	&SV_WriteMovevarsToClient_api,
 	&GetClientFallback_api,
 	&GetAllowCheats_api,
 	&GSBSecure_api,
@@ -569,7 +579,7 @@ bool EXT_FUNC SV_EmitSound2_internal(edict_t *entity, IGameClient *pReceiver, in
 	bool bSendPAS = (channel != CHAN_STATIC && !(flags & SND_FL_STOP) && !(emitFlags & SND_EMIT2_NOPAS));
 	vec3_t origin = {0, 0, 0};
 
-	if (entity && entity != g_psv.edicts)
+	if ((!pOrigin || !(emitFlags & SND_EMIT2_USE_ORIGIN)) && entity && entity != g_psv.edicts)
 	{
 		for (int i = 0; i < 3; ++i)
 			origin[i] = (entity->v.maxs[i] + entity->v.mins[i]) * 0.5f + entity->v.origin[i];

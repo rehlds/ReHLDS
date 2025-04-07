@@ -39,7 +39,7 @@ extern vec3_t player_mins[MAX_MAP_HULLS];
 extern vec3_t player_maxs[MAX_MAP_HULLS];
 
 extern playermove_t *pmove;
-extern movevars_t movevars;
+extern movevars_t sv_movevars;
 
 qboolean PM_AddToTouched(pmtrace_t tr, vec_t *impactvelocity);
 void PM_StuckTouch(int hitent, pmtrace_t *ptraceresult);

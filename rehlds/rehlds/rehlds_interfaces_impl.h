@@ -30,6 +30,16 @@
 #include "rehlds_interfaces.h"
 #include "server.h"
 
+const int NET_DECOMPRESS_MAX_TIMES = 10;
+
+struct FragStats_t
+{
+	float decompress_failure_times[NET_DECOMPRESS_MAX_TIMES];
+
+	// Count of abnormal fragment decompressions in a time window
+	int num_decompress_failures;
+};
+
 class CNetChan : public INetChan
 {
 private:
@@ -38,6 +48,10 @@ private:
 #ifdef REHLDS_FIXES
 	uint8_t m_messageBuffer[NET_MAX_PAYLOAD];
 #endif
+
+	// Stats for decompression of incoming fragments
+	FragStats_t m_FragStats[MAX_STREAMS];
+
 public:
 	CNetChan(netchan_t* chan);
 
@@ -46,10 +60,13 @@ public:
 
 	virtual netchan_t* GetChan();
 
+	void Clear();
+
 public:
 #ifdef REHLDS_FIXES
 	uint8_t* GetExtendedMessageBuffer() { return m_messageBuffer; };
 #endif
+	FragStats_t &GetFragStats(int stream) { return m_FragStats[stream]; };
 };
 
 
@@ -246,6 +263,9 @@ public:
 #ifdef REHLDS_FIXES
 	uint8_t* GetExtendedMessageBuffer() { return m_NetChan.GetExtendedMessageBuffer(); };
 #endif
+
+	void NetchanClear() { m_NetChan.Clear(); }
+	FragStats_t &GetFragStats(int stream) { return m_NetChan.GetFragStats(stream); };
 
 #ifdef REHLDS_FIXES
 	void SetupLocalGameTime() { m_localGameTimeBase = g_psv.time; }

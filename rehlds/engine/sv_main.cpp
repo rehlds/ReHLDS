@@ -132,9 +132,46 @@ cvar_t sv_wateramp = { "sv_wateramp", "0", 0, 0.0f, NULL };
 
 void sv_cheats_hook_callback(cvar_t *cvar);
 void mapcyclefile_hook_callback(cvar_t *cvar);
+void sv_movevars_hook_callback(cvar_t *cvar);
 
 cvarhook_t sv_cheats_hook = { sv_cheats_hook_callback, NULL, NULL };
 cvarhook_t mapcyclefile_hook = { mapcyclefile_hook_callback, NULL, NULL };
+
+//------------------------------------------------
+// Movevars cvarhook declares
+//------------------------------------------------
+
+#define DECLARE_CVARHOOK_MOVEVARS(cvar)\
+	cvarhook_t cvar##_hook = { sv_movevars_hook_callback, NULL, NULL }
+
+#define CVARHOOK_MOVEVARS(cvar)\
+	Cvar_HookVariable(cvar.name, &cvar##_hook);
+
+DECLARE_CVARHOOK_MOVEVARS(sv_gravity);
+DECLARE_CVARHOOK_MOVEVARS(sv_stopspeed);
+DECLARE_CVARHOOK_MOVEVARS(sv_maxspeed);
+DECLARE_CVARHOOK_MOVEVARS(sv_spectatormaxspeed);
+DECLARE_CVARHOOK_MOVEVARS(sv_accelerate);
+DECLARE_CVARHOOK_MOVEVARS(sv_airaccelerate);
+DECLARE_CVARHOOK_MOVEVARS(sv_wateraccelerate);
+DECLARE_CVARHOOK_MOVEVARS(sv_friction);
+DECLARE_CVARHOOK_MOVEVARS(sv_edgefriction);
+DECLARE_CVARHOOK_MOVEVARS(sv_waterfriction);
+DECLARE_CVARHOOK_MOVEVARS(sv_bounce);
+DECLARE_CVARHOOK_MOVEVARS(sv_stepsize);
+DECLARE_CVARHOOK_MOVEVARS(sv_maxvelocity);
+DECLARE_CVARHOOK_MOVEVARS(sv_zmax);
+DECLARE_CVARHOOK_MOVEVARS(sv_wateramp);
+DECLARE_CVARHOOK_MOVEVARS(sv_footsteps);
+DECLARE_CVARHOOK_MOVEVARS(sv_rollangle);
+DECLARE_CVARHOOK_MOVEVARS(sv_rollspeed);
+DECLARE_CVARHOOK_MOVEVARS(sv_skycolor_r);
+DECLARE_CVARHOOK_MOVEVARS(sv_skycolor_g);
+DECLARE_CVARHOOK_MOVEVARS(sv_skycolor_b);
+DECLARE_CVARHOOK_MOVEVARS(sv_skyvec_x);
+DECLARE_CVARHOOK_MOVEVARS(sv_skyvec_y);
+DECLARE_CVARHOOK_MOVEVARS(sv_skyvec_z);
+DECLARE_CVARHOOK_MOVEVARS(sv_skyname);
 
 cvar_t sv_skyname = { "sv_skyname", "desert", 0, 0.0f, NULL };
 cvar_t mapcyclefile = { "mapcyclefile", "mapcycle.txt", 0, 0.0f, NULL };
@@ -951,35 +988,35 @@ void SV_Multicast(edict_t *ent, vec_t *origin, int to, qboolean reliable)
 	host_client = save;
 }
 
-void EXT_FUNC SV_WriteMovevarsToClient(sizebuf_t *message)
+void SV_WriteMovevarsToClient(sizebuf_t *message, movevars_t *movevars)
 {
 	MSG_WriteByte(message, svc_newmovevars);
-	MSG_WriteFloat(message, movevars.gravity);
-	MSG_WriteFloat(message, movevars.stopspeed);
-	MSG_WriteFloat(message, movevars.maxspeed);
-	MSG_WriteFloat(message, movevars.spectatormaxspeed);
-	MSG_WriteFloat(message, movevars.accelerate);
-	MSG_WriteFloat(message, movevars.airaccelerate);
-	MSG_WriteFloat(message, movevars.wateraccelerate);
-	MSG_WriteFloat(message, movevars.friction);
-	MSG_WriteFloat(message, movevars.edgefriction);
-	MSG_WriteFloat(message, movevars.waterfriction);
-	MSG_WriteFloat(message, movevars.entgravity);
-	MSG_WriteFloat(message, movevars.bounce);
-	MSG_WriteFloat(message, movevars.stepsize);
-	MSG_WriteFloat(message, movevars.maxvelocity);
-	MSG_WriteFloat(message, movevars.zmax);
-	MSG_WriteFloat(message, movevars.waveHeight);
-	MSG_WriteByte(message, movevars.footsteps != 0);
-	MSG_WriteFloat(message, movevars.rollangle);
-	MSG_WriteFloat(message, movevars.rollspeed);
-	MSG_WriteFloat(message, movevars.skycolor_r);
-	MSG_WriteFloat(message, movevars.skycolor_g);
-	MSG_WriteFloat(message, movevars.skycolor_b);
-	MSG_WriteFloat(message, movevars.skyvec_x);
-	MSG_WriteFloat(message, movevars.skyvec_y);
-	MSG_WriteFloat(message, movevars.skyvec_z);
-	MSG_WriteString(message, movevars.skyName);
+	MSG_WriteFloat(message, movevars->gravity);
+	MSG_WriteFloat(message, movevars->stopspeed);
+	MSG_WriteFloat(message, movevars->maxspeed);
+	MSG_WriteFloat(message, movevars->spectatormaxspeed);
+	MSG_WriteFloat(message, movevars->accelerate);
+	MSG_WriteFloat(message, movevars->airaccelerate);
+	MSG_WriteFloat(message, movevars->wateraccelerate);
+	MSG_WriteFloat(message, movevars->friction);
+	MSG_WriteFloat(message, movevars->edgefriction);
+	MSG_WriteFloat(message, movevars->waterfriction);
+	MSG_WriteFloat(message, movevars->entgravity);
+	MSG_WriteFloat(message, movevars->bounce);
+	MSG_WriteFloat(message, movevars->stepsize);
+	MSG_WriteFloat(message, movevars->maxvelocity);
+	MSG_WriteFloat(message, movevars->zmax);
+	MSG_WriteFloat(message, movevars->waveHeight);
+	MSG_WriteByte(message, movevars->footsteps != 0);
+	MSG_WriteFloat(message, movevars->rollangle);
+	MSG_WriteFloat(message, movevars->rollspeed);
+	MSG_WriteFloat(message, movevars->skycolor_r);
+	MSG_WriteFloat(message, movevars->skycolor_g);
+	MSG_WriteFloat(message, movevars->skycolor_b);
+	MSG_WriteFloat(message, movevars->skyvec_x);
+	MSG_WriteFloat(message, movevars->skyvec_y);
+	MSG_WriteFloat(message, movevars->skyvec_z);
+	MSG_WriteString(message, movevars->skyName);
 }
 
 void EXT_FUNC SV_WriteDeltaDescriptionsToClient(sizebuf_t *msg)
@@ -1008,76 +1045,41 @@ void EXT_FUNC SV_WriteDeltaDescriptionsToClient(sizebuf_t *msg)
 	}
 }
 
-void EXT_FUNC SV_SetMoveVars(void)
+void sv_movevars_hook_callback(cvar_t *cvar)
 {
-	movevars.entgravity			= 1.0f;
-	movevars.gravity			= sv_gravity.value;
-	movevars.stopspeed			= sv_stopspeed.value;
-	movevars.maxspeed			= sv_maxspeed.value;
-	movevars.spectatormaxspeed	= sv_spectatormaxspeed.value;
-	movevars.accelerate			= sv_accelerate.value;
-	movevars.airaccelerate		= sv_airaccelerate.value;
-	movevars.wateraccelerate	= sv_wateraccelerate.value;
-	movevars.friction			= sv_friction.value;
-	movevars.edgefriction		= sv_edgefriction.value;
-	movevars.waterfriction		= sv_waterfriction.value;
-	movevars.bounce				= sv_bounce.value;
-	movevars.stepsize			= sv_stepsize.value;
-	movevars.maxvelocity		= sv_maxvelocity.value;
-	movevars.zmax				= sv_zmax.value;
-	movevars.waveHeight			= sv_wateramp.value;
-	movevars.footsteps			= sv_footsteps.value;
-	movevars.rollangle			= sv_rollangle.value;
-	movevars.rollspeed			= sv_rollspeed.value;
-	movevars.skycolor_r			= sv_skycolor_r.value;
-	movevars.skycolor_g			= sv_skycolor_g.value;
-	movevars.skycolor_b			= sv_skycolor_b.value;
-	movevars.skyvec_x			= sv_skyvec_x.value;
-	movevars.skyvec_y			= sv_skyvec_y.value;
-	movevars.skyvec_z			= sv_skyvec_z.value;
-
-	Q_strncpy(movevars.skyName, sv_skyname.string, sizeof(movevars.skyName) - 1);
-	movevars.skyName[sizeof(movevars.skyName) - 1] = 0;
+	SV_SetMoveVars(&sv_movevars);
 }
 
-void SV_QueryMovevarsChanged(void)
+void SV_SetMoveVars(movevars_t *movevars)
 {
-	if (movevars.entgravity				!= 1.0f
-		|| sv_maxspeed.value			!= movevars.maxspeed
-		|| sv_gravity.value				!= movevars.gravity
-		|| sv_stopspeed.value			!= movevars.stopspeed
-		|| sv_spectatormaxspeed.value	!= movevars.spectatormaxspeed
-		|| sv_accelerate.value			!= movevars.accelerate
-		|| sv_airaccelerate.value		!= movevars.airaccelerate
-		|| sv_wateraccelerate.value		!= movevars.wateraccelerate
-		|| sv_friction.value			!= movevars.friction
-		|| sv_edgefriction.value		!= movevars.edgefriction
-		|| sv_waterfriction.value		!= movevars.waterfriction
-		|| sv_bounce.value				!= movevars.bounce
-		|| sv_stepsize.value			!= movevars.stepsize
-		|| sv_maxvelocity.value			!= movevars.maxvelocity
-		|| sv_zmax.value				!= movevars.zmax
-		|| sv_wateramp.value			!= movevars.waveHeight
-		|| sv_footsteps.value			!= movevars.footsteps
-		|| sv_rollangle.value			!= movevars.rollangle
-		|| sv_rollspeed.value			!= movevars.rollspeed
-		|| sv_skycolor_r.value			!= movevars.skycolor_r
-		|| sv_skycolor_g.value			!= movevars.skycolor_g
-		|| sv_skycolor_b.value			!= movevars.skycolor_b
-		|| sv_skyvec_x.value			!= movevars.skyvec_x
-		|| sv_skyvec_y.value			!= movevars.skyvec_y
-		|| sv_skyvec_z.value			!= movevars.skyvec_z
-		|| Q_strcmp(sv_skyname.string, movevars.skyName))
-	{
-		SV_SetMoveVars();
+	movevars->entgravity		= 1.0f;
+	movevars->gravity			= sv_gravity.value;
+	movevars->stopspeed			= sv_stopspeed.value;
+	movevars->maxspeed			= sv_maxspeed.value;
+	movevars->spectatormaxspeed	= sv_spectatormaxspeed.value;
+	movevars->accelerate		= sv_accelerate.value;
+	movevars->airaccelerate		= sv_airaccelerate.value;
+	movevars->wateraccelerate	= sv_wateraccelerate.value;
+	movevars->friction			= sv_friction.value;
+	movevars->edgefriction		= sv_edgefriction.value;
+	movevars->waterfriction		= sv_waterfriction.value;
+	movevars->bounce			= sv_bounce.value;
+	movevars->stepsize			= sv_stepsize.value;
+	movevars->maxvelocity		= sv_maxvelocity.value;
+	movevars->zmax				= sv_zmax.value;
+	movevars->waveHeight		= sv_wateramp.value;
+	movevars->footsteps			= sv_footsteps.value;
+	movevars->rollangle			= sv_rollangle.value;
+	movevars->rollspeed			= sv_rollspeed.value;
+	movevars->skycolor_r		= sv_skycolor_r.value;
+	movevars->skycolor_g		= sv_skycolor_g.value;
+	movevars->skycolor_b		= sv_skycolor_b.value;
+	movevars->skyvec_x			= sv_skyvec_x.value;
+	movevars->skyvec_y			= sv_skyvec_y.value;
+	movevars->skyvec_z			= sv_skyvec_z.value;
 
-		client_t *cl = g_psvs.clients;
-		for (int i = 0; i < g_psvs.maxclients; i++, cl++)
-		{
-			if (!cl->fakeclient && (cl->active || cl->spawned || cl->connected))
-				SV_WriteMovevarsToClient(&cl->netchan.message);
-		}
-	}
+	Q_strncpy(movevars->skyName, sv_skyname.string, sizeof(movevars->skyName) - 1);
+	movevars->skyName[sizeof(movevars->skyName) - 1] = 0;
 }
 
 void EXT_FUNC SV_SendServerinfo_mod(sizebuf_t *msg, IGameClient* cl)
@@ -1184,8 +1186,8 @@ void SV_SendServerinfo_internal(sizebuf_t *msg, client_t *client)
 	MSG_WriteByte(msg, sv_cheats.value != 0);
 
 	SV_WriteDeltaDescriptionsToClient(msg);
-	SV_SetMoveVars();
-	SV_WriteMovevarsToClient(msg);
+	SV_SetMoveVars(&sv_movevars);
+	SV_WriteMovevarsToClient(msg, &sv_movevars);
 
 	MSG_WriteByte(msg, svc_cdtrack);
 	MSG_WriteByte(msg, gGlobalVariables.cdAudioTrack);
@@ -1196,6 +1198,7 @@ void SV_SendServerinfo_internal(sizebuf_t *msg, client_t *client)
 	client->spawned = FALSE;
 	client->connected = TRUE;
 	client->fully_connected = FALSE;
+	client->movevars = sv_movevars;
 }
 
 void SV_SendResources(sizebuf_t *msg)
@@ -5778,8 +5781,12 @@ void SV_PropagateCustomizations(void)
 				pResource = &pCust->resource;
 
 #ifdef REHLDS_FIXES
+				// skip logos if sv_send_logos is 0
 				if ((pResource->ucFlags & RES_CUSTOM) && !sv_send_logos.value)
+				{
+					pCust = pCust->pNext;
 					continue;
+				}
 #endif
 
 				MSG_WriteByte(&host_client->netchan.message, svc_customization);
@@ -6073,7 +6080,7 @@ void PrecacheModelSounds(studiohdr_t *pStudioHeader)
 void PrecacheModelSpecifiedFiles()
 {
 	const char **s = &g_psv.model_precache[1];
-	for (size_t i = 1; i < ARRAYSIZE(g_psv.model_precache) && *s != nullptr; i++, s++)
+	for (size_t i = 1; i < ARRAYSIZE(g_psv.model_precache) && *s && g_psv.models[i]; i++, s++)
 	{
 		if (g_psv.models[i]->type != mod_studio)
 			continue;
@@ -6512,7 +6519,7 @@ int SV_SpawnServer(qboolean bIsDemo, char *server, char *startspot)
 	gGlobalVariables.serverflags = g_psvs.serverflags;
 	gGlobalVariables.mapname = (size_t)g_psv.name - (size_t)pr_strings;
 	gGlobalVariables.startspot = (size_t)g_psv.startspot - (size_t)pr_strings;
-	SV_SetMoveVars();
+	SV_SetMoveVars(&sv_movevars);
 
 	return 1;
 }
@@ -8091,7 +8098,6 @@ void EXT_FUNC SV_Frame_Internal()
 		SV_Physics();
 		g_psv.time += host_frametime;
 	}
-	SV_QueryMovevarsChanged();
 	SV_RequestMissingResourcesFromClients();
 	SV_CheckTimeouts();
 	SV_SendClientMessages();
@@ -8335,6 +8341,35 @@ void SV_Init(void)
 	Cvar_RegisterVariable(&sv_use_entity_file);
 	Cvar_RegisterVariable(&sv_usercmd_custom_random_seed);
 #endif
+
+	//------------------------------------------------
+	// Movevars cvarhook registers
+	//------------------------------------------------
+	CVARHOOK_MOVEVARS(sv_gravity);
+	CVARHOOK_MOVEVARS(sv_stopspeed);
+	CVARHOOK_MOVEVARS(sv_maxspeed);
+	CVARHOOK_MOVEVARS(sv_spectatormaxspeed);
+	CVARHOOK_MOVEVARS(sv_accelerate);
+	CVARHOOK_MOVEVARS(sv_airaccelerate);
+	CVARHOOK_MOVEVARS(sv_wateraccelerate);
+	CVARHOOK_MOVEVARS(sv_friction);
+	CVARHOOK_MOVEVARS(sv_edgefriction);
+	CVARHOOK_MOVEVARS(sv_waterfriction);
+	CVARHOOK_MOVEVARS(sv_bounce);
+	CVARHOOK_MOVEVARS(sv_stepsize);
+	CVARHOOK_MOVEVARS(sv_maxvelocity);
+	CVARHOOK_MOVEVARS(sv_zmax);
+	CVARHOOK_MOVEVARS(sv_wateramp);
+	CVARHOOK_MOVEVARS(sv_footsteps);
+	CVARHOOK_MOVEVARS(sv_rollangle);
+	CVARHOOK_MOVEVARS(sv_rollspeed);
+	CVARHOOK_MOVEVARS(sv_skycolor_r);
+	CVARHOOK_MOVEVARS(sv_skycolor_g);
+	CVARHOOK_MOVEVARS(sv_skycolor_b);
+	CVARHOOK_MOVEVARS(sv_skyvec_x);
+	CVARHOOK_MOVEVARS(sv_skyvec_y);
+	CVARHOOK_MOVEVARS(sv_skyvec_z);
+	CVARHOOK_MOVEVARS(sv_skyname);
 
 	for (int i = 0; i < MAX_MODELS; i++)
 	{

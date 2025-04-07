@@ -74,6 +74,7 @@
 // SV_EmitSound2 flags
 #define SND_EMIT2_NOPAS			(1<<0)	// never to do check PAS
 #define SND_EMIT2_INVOKER		(1<<1)	// do not send to the client invoker
+#define SND_EMIT2_USE_ORIGIN	(1<<2)	// use given origin instead of entity origin
 
 // Engine edict->spawnflags
 #define SF_NOTINDEATHMATCH		0x0800	// Do not spawn when deathmatch and loading entities from a file

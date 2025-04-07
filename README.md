@@ -8,6 +8,15 @@ Along with reverse engineering, a lot of defects and (potential) bugs were found
 
 You can try playing on one of many servers that are using ReHLDS: [Game Tracker](http://www.gametracker.com/search/?search_by=server_variable&search_by2=sv_version)
 
+> [!TIP]
+> ReHLDS linux-releases now is signed via `GPG`, pubkey is: `63547829004f07716f7be4856c32c4282e60fb67` and could be found at [https://keyserver.ubuntu.com/](https://keyserver.ubuntu.com/pks/lookup?search=63547829004f07716f7be4856c32c4282e60fb67+&fingerprint=on&op=index).
+>
+> How to:
+> 1. [Download](https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x63547829004f07716f7be4856c32c4282e60fb67) `63547829004f07716f7be4856c32c4282e60fb67.asc` key
+> 2. Import: `gpg --import 63547829004f07716f7be4856c32c4282e60fb67.asc`
+> 3. Download release `archive` and `.asc` file.
+> 4. Verify: `gpg --verify some-rehlds.zip.asc some-rehlds.zip`.
+
 ## Goals of the project
 <ul>
 <li>Provide more stable (than official) version of Half-Life dedicated server with extended API for mods and plugins</li>
@@ -17,7 +26,8 @@ You can try playing on one of many servers that are using ReHLDS: [Game Tracker]
 ## How can use it?
 ReHLDS is fully compatible with the official pre-anniversary edition of HLDS (engine version <= 8684) downloaded by steamcmd. All you have to do is to download ReHLDS binaries and replace original swds.dll/engine_i486.so. For windows you can also copy a swds.pdb file with a debug information.
 
-<b>Warning!</b> ReHLDS is not compatible with an old 5xxx or below platforms downloaded by hldsupdatetool.
+> [!CAUTION]  
+> ReHLDS is not compatible with an old 5xxx or below platforms downloaded by hldsupdatetool.
 
 #### Downloading HLDS via steamcmd
 
@@ -63,9 +73,12 @@ This means that plugins that do binary code analysis (Orpheu for example) probab
 <li>sv_rehlds_local_gametime &lt;1|0&gt; // A feature of local gametime which decrease "lags" if you run same map for a long time. Default: 0
 <li>sv_use_entity_file // Use custom entity file for a map. Path to an entity file will be "maps/[map name].ent". 0 - use original entities. 1 - use .ent files from maps directory. 2 - use .ent files from maps directory and create new .ent file if not exist.
 <li>sv_usercmd_custom_random_seed // When enabled server will populate an additional random seed independent of the client. Default: 0
-<li>sv_net_incoming_decompression <1|0> // When enabled server will decompress of incoming compressed file transfer payloads. Default: 1
-<li>sv_net_incoming_decompression_max_ratio <0|100> // Sets the max allowed ratio between compressed and uncompressed data for file transfer. (A ratio close to 90 indicates large uncompressed data with low entropy) Default: 80.0
-<li>sv_net_incoming_decompression_max_size <16|65536> // Sets the max allowed size for decompressed file transfer data. Default: 65536 bytes
+<li>sv_net_incoming_decompression &lt;1|0&gt; // When enabled server will decompress of incoming compressed file transfer payloads. Default: 1
+<li>sv_net_incoming_decompression_max_ratio &lt;0|100&gt; // Sets the max allowed ratio between compressed and uncompressed data for file transfer. (A ratio close to 90 indicates large uncompressed data with low entropy) Default: 80.0
+<li>sv_net_incoming_decompression_max_size &lt;16|65536&gt; // Sets the max allowed size for decompressed file transfer data. Default: 65536 bytes
+<li>sv_net_incoming_decompression_min_failures &lt;0|10&gt; // Sets the min number of decompression failures required before a player's connection is flagged for potential punishment. Default: 4
+<li>sv_net_incoming_decompression_max_failures &lt;0|10&gt; // Sets the max number of decompression failures allowed within a specified time window before action is taken against the player. Default: 10
+<li>sv_net_incoming_decompression_min_failuretime: &lt;0.1|10.0&gt; // Sets the min time in secs within which decompression failures are tracked to determine if the player exceeds the failure thresholds. Default: 0.1
 <li>sv_net_incoming_decompression_punish // Time in minutes for which the player will be banned for malformed/abnormal bzip2 fragments (0 - Permanent, use a negative number for a kick). Default: -1
 <li>sv_tags &lt;comma-delimited string list of tags&gt; // Sets a string defining the "gametags" for this server, this is optional, but if it is set it allows users/scripts to filter in the matchmaking/server-browser interfaces based on the value. Default: ""
 <li>sv_filterban &lt;-1|0|1&gt;// Set packet filtering by IP mode. -1 - All players will be rejected without any exceptions. 0 - No checks will happen. 1 - All incoming players will be checked if they're IP banned (if they have an IP filter entry), if they are, they will be kicked. Default: 1
@@ -134,6 +147,7 @@ sudo apt-get update
 sudo apt-get install -y gcc-multilib g++-multilib
 sudo apt-get install -y build-essential
 sudo apt-get install -y libc6-dev libc6-dev-i386
+sudo apt-get install -y cmake			
 </pre>
 </li>
 
