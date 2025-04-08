@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.1)
 project(bzip2 C)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g0 -O1 -fno-stack-protector")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-pic -g0 -O1 -fno-stack-protector -fno-strict-aliasing -fno-strict-overflow")
 
 set(BZIP2_SRCS
 	"src/blocksort.c"
@@ -21,5 +21,5 @@ include_directories(
 
 add_library(bzip2 STATIC ${BZIP2_SRCS})
 set_target_properties(bzip2 PROPERTIES
-	COMPILE_FLAGS "-m32"
+	COMPILE_FLAGS "-m32 -fno-pic"
 )
