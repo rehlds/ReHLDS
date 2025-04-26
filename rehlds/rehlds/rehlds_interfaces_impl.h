@@ -271,6 +271,30 @@ public:
 	void SetupLocalGameTime() { m_localGameTimeBase = g_psv.time; }
 	double GetLocalGameTime() const { return g_psv.time - m_localGameTimeBase; }
 	double GetLocalGameTimeBase() const { return m_localGameTimeBase; }
+	
+	// How much of a movement time buffer can we process from this user?
+	float m_flMovementTimeForUserCmdProcessingRemaining;
+
+	float GetRemainingMovementTimeForUserCmdProcessing() const { return m_flMovementTimeForUserCmdProcessingRemaining; }
+	float ConsumeMovementTimeForUserCmdProcessing( float flTimeNeeded )
+	{
+		float MOVE_EPSILON = 0.03125f;
+		if ( m_flMovementTimeForUserCmdProcessingRemaining <= 0.0f )
+			return 0.0f;
+		else if ( flTimeNeeded > m_flMovementTimeForUserCmdProcessingRemaining + MOVE_EPSILON )
+		{
+			float flResult = m_flMovementTimeForUserCmdProcessingRemaining;
+			m_flMovementTimeForUserCmdProcessingRemaining = 0.0f;
+			return flResult;
+		}
+		else
+		{
+			m_flMovementTimeForUserCmdProcessingRemaining -= flTimeNeeded;
+			if ( m_flMovementTimeForUserCmdProcessingRemaining < 0.0f )
+				m_flMovementTimeForUserCmdProcessingRemaining = 0.0f;
+			return flTimeNeeded;
+		}
+	}
 #endif
 };
 
