@@ -182,8 +182,12 @@ int BoxOnPlaneSide(vec_t *emins, vec_t *emaxs, mplane_t *p)
 
 qboolean VectorCompare(const vec_t *v1, const vec_t *v2)
 {
-	__m128 cmp = _mm_cmpneq_ps(_mm_loadu_ps(v1), _mm_loadu_ps(v2));
-	return !(_mm_movemask_ps(cmp) & (1|2|4));
+    // Load only valid datas
+    __m128 vec1 = _mm_setr_ps(v1[0], v1[1], v1[2], 0.0f);
+    __m128 vec2 = _mm_setr_ps(v2[0], v2[1], v2[2], 0.0f);
+    
+    __m128 cmp = _mm_cmpneq_ps(vec1, vec2);
+    return !(_mm_movemask_ps(cmp) & 0x7);
 }
 
 void AngleVectors(const vec_t *angles, vec_t *forward, vec_t *right, vec_t *up)
