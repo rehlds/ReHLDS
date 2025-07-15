@@ -59,7 +59,7 @@ FILE *CFileSystem_Stdio::FS_fopen(const char *filename, const char *options, boo
 #ifndef _WIN32
 	if (!tst && !Q_strchr(options, 'w') && !Q_strchr(options, '+')) {
 		const char *file = findFileInDirCaseInsensitive(filename);
-		tst = fopen(filename, options);
+		tst = fopen(file, options);
 	}
 #endif // _WIN32
 
