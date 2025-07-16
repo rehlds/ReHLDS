@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths-ignore:
       - '**.md'
+      - '.github/**'
 
   pull_request:
     types: [opened, reopened, synchronize]
@@ -123,14 +124,23 @@ jobs:
         id: get_version
         shell: pwsh
         run: |
-          $line = Get-Content rehlds/version/appversion.h | Where-Object { $_ -match 'APP_VERSION' }
-          if ($line -match '"([^"]+)"') {
-            "version=$($matches[1])" >> $env:GITHUB_OUTPUT
-            Write-Host "Version found"
-          } else {
-            Write-Error "Version not found"
+          $versionFile = "rehlds/version/appversion.h"
+          if (-not (Test-Path $versionFile)) {
+            Write-Error "Version file not found: $versionFile"
             exit 1
           }
+
+          $content = Get-Content $versionFile
+          foreach ($line in $content) {
+            if ($line -match '^\s*#define\s+APP_VERSION\s+"([^"]+)"') {
+              $version = $matches[1]
+              "version=$version" >> $env:GITHUB_OUTPUT
+              Write-Host "Found version: $version"
+              exit 0
+            }
+          }
+          Write-Error "APP_VERSION not found in file"
+          exit 1
 
       - name: Show version
         run: echo "Version is ${{ steps.get_version.outputs.version }}"
