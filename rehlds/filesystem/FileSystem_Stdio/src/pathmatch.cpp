@@ -258,7 +258,7 @@ typedef struct CaseFoldHashBucket
 
 #include "pathmatch_casefolding.h"
 
-inline static void locate_case_fold_mapping(const uint32_t from, uint32_t *to)
+inline __attribute__((always_inline)) static void locate_case_fold_mapping(const uint32_t from, uint32_t *to)
 {
 	const uint8_t hashed = ((from ^ (from >> 8)) & 0xFF);
 	const CaseFoldHashBucket *bucket = &case_fold_hash[hashed];
@@ -282,7 +282,7 @@ inline static void locate_case_fold_mapping(const uint32_t from, uint32_t *to)
 	to[2] = 0;
 }
 
-inline static uint32_t *fold_utf8(const char *str)
+inline __attribute__((always_inline)) static uint32_t *fold_utf8(const char *str)
 {
 	uint32_t *retval = new uint32_t[(Q_strlen(str) * 3) + 1];
 	uint32_t *dst = retval;
@@ -313,7 +313,7 @@ inline static uint32_t *fold_utf8(const char *str)
 	return retval;
 }
 
-inline static int utf8casecmp_loop(const uint32_t *folded1, const uint32_t *folded2)
+inline __attribute__((always_inline)) static int utf8casecmp_loop(const uint32_t *folded1, const uint32_t *folded2)
 {
 	while (true)
 	{
@@ -356,7 +356,7 @@ public:
 	operator DIR *() { return m_pDir; }
 	operator bool() { return m_pDir != nullptr; }
 
-	private:
+private:
 	void Close() { if (m_pDir) closedir(m_pDir); }
 
 	DIR *m_pDir;
@@ -500,22 +500,6 @@ static bool Descend(char *pPath, size_t nStartIdx, bool bAllowBasenameMismatch, 
 	return false;
 }
 
-char *GetSteamContentPath()
-{
-	char szContentLink[4096];
-	Q_snprintf(szContentLink, sizeof(szContentLink), "%s/.steam/steam", getenv("HOME"));
-
-	char *pszContentPath = realpath(szContentLink, nullptr);
-	if (pszContentPath) {
-		Q_strcat(pszContentPath, "/");
-	}
-	else {
-		pszContentPath = Q_strdup("/");
-	}
-
-	return pszContentPath;
-}
-
 #ifdef DO_PATHMATCH_CACHE
 typedef std::map<std::string, std::pair<std::string, time_t> > resultCache_t;
 typedef std::map<std::string, std::pair<std::string, time_t> >::iterator resultCacheItr_t;
@@ -574,33 +558,39 @@ PathMod_t pathmatch(const char *pszIn, char **ppszOut, bool bAllowBasenameMismat
 
 	if (pPath)
 	{
+		// I believe this code is broken. I'm guessing someone wanted to avoid lowercasing
+		//	the path before the steam directory - but it's actually skipping lowercasing
+		//	whenever steam is found anywhere - including the filename. For example,
+		//	  /home/mikesart/valvesrc/console/l4d2/game/left4dead2_dlc1/particles/steam_fx.pcf
+		//	winds up only having the "steam_fx.pcf" portion lowercased.
+#ifdef NEVER
 		// optimization, if the path contained steam somewhere
 		// assume the path up through the component with 'steam' in
 		// is valid (because we almost certainly obtained it
 		// progamatically
-		size_t nStartIdx = 0;
-		static char *pszSteamPath = nullptr;
-		static size_t nSteamPathLen = 0;
-		if (!pszSteamPath)
+		char *p = strcasestr(pPath, "steam");
+		if (p)
 		{
-			pszSteamPath = GetSteamContentPath();
-			nSteamPathLen = Q_strlen(pszSteamPath);
-		}
+			while (p > pPath)
+			{
+				if (p[-1] == '/')
+					break;
+				p--;
+			}
 
-		// optimization, if the path contained steam somewhere
-		// assume the path up through the component with 'steam' in
-		// is valid (because we almost certainly obtained it
-		// progamatically
-		if (strncasecmp(pPath, pszSteamPath, nSteamPathLen) == 0)
+			if ((p == pPath + 1) && (*pPath != '/'))
+				p = pPath;
+		}
+		else
 		{
-			nStartIdx = nSteamPathLen - 1;
-			Q_memcpy(pPath, pszSteamPath, nStartIdx);
+			p = pPath;
 		}
-
+#else
 		char *p = pPath;
+#endif
 
 		// Try the lower casing of the remaining path
-		char *pBasename = p + nStartIdx;
+		char *pBasename = p;
 		while (*p)
 		{
 			if (*p == '/') {
@@ -620,7 +610,7 @@ PathMod_t pathmatch(const char *pszIn, char **ppszOut, bool bAllowBasenameMismat
 
 		// path didn't match lowered successfully, restore the basename
 		// if bAllowBasenameMismatch was true
-		if (bAllowBasenameMismatch && *pBasename)
+		if (bAllowBasenameMismatch)
 		{
 			const char *pSrc = pszIn + (pBasename - pPath);
 			while (*pBasename)
@@ -635,7 +625,7 @@ PathMod_t pathmatch(const char *pszIn, char **ppszOut, bool bAllowBasenameMismat
 			DEBUG_BREAK();
 		}
 
-		bool bSuccess = Descend(pPath, nStartIdx, bAllowBasenameMismatch);
+		bool bSuccess = Descend(pPath, 0, bAllowBasenameMismatch);
 		if (bSuccess)
 		{
 			*ppszOut = pPath;
