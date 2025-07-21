@@ -20,13 +20,32 @@ set commitURL=
 set commitCount=0
 set branch_name=master
 
-for /f "delims=" %%a in ('wmic OS Get localdatetime  ^| find "."') do set "dt=%%a"
-set "YYYY=%dt:~0,4%"
-set "MM=%dt:~4,2%"
-set "DD=%dt:~6,2%"
-set "hour=%dt:~8,2%"
-set "min=%dt:~10,2%"
-set "sec=%dt:~12,2%"
+for /f "tokens=*" %%i in ('powershell -NoProfile -Command ^
+    "$now = Get-Date; Write-Output ('{0:yyyy}|{0:MM}|{0:dd}|{0:HH}|{0:mm}|{0:ss}' -f $now)"') do (
+    for /f "tokens=1-6 delims=|" %%a in ("%%i") do (
+        set "YYYY=%%a"
+        set "MM=%%b"
+        set "DD=%%c"
+        set "hour=%%d"
+        set "min=%%e"
+        set "sec=%%f"
+    )
+)
+
+echo YYYY=%YYYY%
+echo MM=%MM%
+echo DD=%DD%
+echo hour=%hour%
+echo min=%min%
+echo sec=%sec%
+
+:: for /f "delims=" %%a in ('wmic OS Get localdatetime  ^| find "."') do set "dt=%%a"
+:: set "YYYY=%dt:~0,4%"
+:: set "MM=%dt:~4,2%"
+:: set "DD=%dt:~6,2%"
+:: set "hour=%dt:~8,2%"
+:: set "min=%dt:~10,2%"
+:: set "sec=%dt:~12,2%"
 
 ::
 :: Remove leading zero from MM (e.g 09 > 9)
