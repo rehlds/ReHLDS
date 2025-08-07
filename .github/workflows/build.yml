@@ -398,44 +398,67 @@ jobs:
           fi
           rm -f appversion.h
 
+      - name: Set SIGN_READY env
+        run: |
+          if [[ "${{ github.event_name }}" == "release" && \
+                "${{ github.event.action }}" == "published" && \
+                "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "SIGN_READY=true" >> $GITHUB_ENV
+          else
+           echo "SIGN_READY=false" >> $GITHUB_ENV
+          fi
+
       - name: Final signing and Packaging bin/dbg
         id: packaging-job
-        if: |
-          github.event_name == 'release' &&
-          github.event.action == 'published' &&
-          startsWith(github.ref, 'refs/tags/')
         run: |
+          if [[ "$SIGN_READY" == "true" ]]; then
+            echo "Signing avalible."
 
-          # new runner, niw signs
-          echo "${{ secrets.PUB_ASC }}" > "${{ secrets.PUB_ASC_FILE }}"
-          echo "${{ secrets.KEY_ASC }}" > "${{ secrets.KEY_ASC_FILE }}"
-          gpg --batch --yes --import "${{ secrets.PUB_ASC_FILE }}"
-          gpg --batch --yes --import "${{ secrets.KEY_ASC_FILE }}"
-          GPG_LINUX_FINGERPRINT=$(gpg --list-keys --with-colons | grep '^fpr' | head -n 1 | cut -d: -f10)
-          echo "$GPG_LINUX_FINGERPRINT:6:" | gpg --batch --import-ownertrust
-          echo "GPG_LINUX_FINGERPRINT=$GPG_LINUX_FINGERPRINT" >> $GITHUB_ENV
+            echo "${{ secrets.PUB_ASC }}" > "${{ secrets.PUB_ASC_FILE }}"
+            echo "${{ secrets.KEY_ASC }}" > "${{ secrets.KEY_ASC_FILE }}"
+            gpg --batch --yes --import "${{ secrets.PUB_ASC_FILE }}"
+            gpg --batch --yes --import "${{ secrets.KEY_ASC_FILE }}"
+            GPG_LINUX_FINGERPRINT=$(gpg --list-keys --with-colons | grep '^fpr' | head -n 1 | cut -d: -f10)
+            echo "$GPG_LINUX_FINGERPRINT:6:" | gpg --batch --import-ownertrust
+            echo "GPG_LINUX_FINGERPRINT=$GPG_LINUX_FINGERPRINT" >> $GITHUB_ENV
+          else
+            echo "Signing skipped."
+          fi
 
           sign_file() {
-            local file=$1
-            gpg --batch --yes --detach-sign --armor -u "$GPG_LINUX_FINGERPRINT" "$file"
-            if [ $? -ne 0 ]; then
-              echo "Error: Failed to sign $file"
-              exit 2
+            if [[ "$SIGN_READY" == "true" ]]; then
+              local file=$1
+              gpg --batch --yes --detach-sign --armor -u "$GPG_LINUX_FINGERPRINT" "$file"
+              if [ $? -ne 0 ]; then
+                echo "Error: Failed to sign $file"
+                exit 2
+              fi
+              echo "$file signed successfully."
+            else
+              echo "$file not signed (SIGN_READY=$SIGN_READY)"
             fi
-            echo "$file signed successfully."
           }
-          
-          # Pack and sign final archive
+
+          # Pack and try sign final archive
           7z a -tzip rehlds-bin-${{ env.APP_VERSION }}.zip bin/ hlsdk/
           sign_file "rehlds-bin-${{ env.APP_VERSION }}.zip"
 
-          # Pack and sign final archive
+          # Pack and try sign final archive
           7z a -t7z -m0=lzma2 -mx=9 -mfb=64 -aoa rehlds-dbg-${{ env.APP_VERSION }}.7z debug/
           sign_file "rehlds-dbg-${{ env.APP_VERSION }}.7z"
 
         shell: bash
 
       - name: Publish artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rehlds-ci-${{ env.APP_VERSION }}
+          path: |
+            *.zip
+            *.7z
+            *.asc
+
+      - name: Release artifacts
         uses: softprops/action-gh-release@v2
         id: publish-job
         if: |
@@ -446,5 +469,6 @@ jobs:
             *.zip
             *.7z
             *.asc
+
         env:
           GITHUB_TOKEN: ${{ secrets.API_TOKEN }}
