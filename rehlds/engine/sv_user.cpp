@@ -794,6 +794,54 @@ void SV_RunCmd(usercmd_t *ucmd, int random_seed)
 	}
 #endif
 
+#ifdef REHLDS_FIXES
+	#define TICK_INTERVAL (1.0f / sys_ticrate.value)
+
+	CGameClient* gameClient = g_GameClients[host_client - g_psvs.clients];
+	// bool bRunNullCmd = false;
+	if (int numUsrCmdProcessTicksMax = (int)sv_maxusrcmdprocessticks.value)
+	{
+		// Grant the client some time buffer to execute user commands
+		gameClient->m_flMovementTimeForUserCmdProcessingRemaining += TICK_INTERVAL;
+
+		// but never accumulate more than N ticks
+		if (gameClient->GetRemainingMovementTimeForUserCmdProcessing() > numUsrCmdProcessTicksMax * TICK_INTERVAL)
+		{
+			gameClient->m_flMovementTimeForUserCmdProcessingRemaining = numUsrCmdProcessTicksMax * TICK_INTERVAL;
+			// bRunNullCmd = true;
+		}
+	}
+	/*else
+	{
+		// Otherwise we don't care to track time
+		m_flMovementTimeForUserCmdProcessingRemaining = FLT_MAX;
+	}
+	*/
+
+	float playerFrameTime = TICK_INTERVAL;
+	float flTimeAllowedForProcessing = gameClient->ConsumeMovementTimeForUserCmdProcessing(playerFrameTime);
+	bool isBot = host_client->fakeclient;
+
+	if (!isBot && (flTimeAllowedForProcessing < playerFrameTime))
+	{
+		// Make sure that the activity in command is erased because player cheated or dropped too many packets
+		double dblWarningFrequencyThrottle = sv_maxusrcmdprocessticks_warning.value;
+		if (dblWarningFrequencyThrottle >= 0.0)
+		{
+			static double s_dblLastWarningTime = 0.0;
+			double dblTimeNow = Sys_FloatTime();
+			if (!s_dblLastWarningTime || (dblTimeNow - s_dblLastWarningTime >= dblWarningFrequencyThrottle))
+			{
+				s_dblLastWarningTime = dblTimeNow;
+				Con_Printf("sv_maxusrcmdprocessticks_warning at server tick %u: Ignored client %s usrcmd (%.6f < %.6f)!\n",
+					/* System::GetTick() */ 123, host_client->name, flTimeAllowedForProcessing, playerFrameTime);
+			}
+		}
+
+		return; // Don't process this command
+	}
+#endif // REHLDS_FIXES
+
 	gEntityInterface.pfnCmdStart(sv_player, ucmd, random_seed);
 	frametime = float(ucmd->msec * 0.001);
 	host_client->svtimebase = frametime + host_client->svtimebase;
