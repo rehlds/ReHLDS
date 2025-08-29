@@ -21,12 +21,22 @@ CSimplePlatform::CSimplePlatform() {
 	if (setsockopt_v11 == NULL)
 		rehlds_syserror("%s: setsockopt_v11 not found", __func__);
 #endif
+
+#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+	m_pGameServerContext = new CSteamGameServerAPIContext();
+	m_pClientContext = new CSteamAPIContext();
+#endif
 }
 
 CSimplePlatform::~CSimplePlatform()
 {
 #ifdef _WIN32
 	FreeLibrary(wsock);
+#endif
+
+#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+	delete static_cast<CSteamGameServerAPIContext*>(m_pGameServerContext);
+	delete static_cast<CSteamAPIContext*>(m_pClientContext);
 #endif
 }
 
@@ -162,7 +172,13 @@ void CSimplePlatform::SteamAPI_RegisterCallback(CCallbackBase *pCallback, int iC
 }
 
 bool CSimplePlatform::SteamAPI_Init() {
+	#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+	if (!::SteamAPI_InitSafe())
+		return false;
+	return static_cast<CSteamAPIContext*>(m_pClientContext)->Init();
+	#else
 	return ::SteamAPI_Init();
+	#endif
 }
 
 void CSimplePlatform::SteamAPI_UnregisterCallResult(class CCallbackBase *pCallback, SteamAPICall_t hAPICall) {
@@ -170,15 +186,31 @@ void CSimplePlatform::SteamAPI_UnregisterCallResult(class CCallbackBase *pCallba
 }
 
 ISteamApps* CSimplePlatform::SteamApps() {
+	#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+	return static_cast<CSteamAPIContext*>(m_pClientContext)->SteamApps();
+	#else
 	return ::SteamApps();
+	#endif
 }
 
+#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+bool CSimplePlatform::SteamGameServer_InitSafe(uint32 unIP, uint16 usSteamPort, uint16 usGamePort, uint16 usQueryPort, EServerMode eServerMode, const char *pchVersionString) {
+	if (!::SteamGameServer_InitSafe(unIP, usSteamPort, usGamePort, usQueryPort, eServerMode, pchVersionString))
+		return false;
+	return static_cast<CSteamGameServerAPIContext*>(m_pGameServerContext)->Init();
+}
+#else 
 bool CSimplePlatform::SteamGameServer_Init(uint32 unIP, uint16 usSteamPort, uint16 usGamePort, uint16 usQueryPort, EServerMode eServerMode, const char *pchVersionString) {
 	return ::SteamGameServer_Init(unIP, usSteamPort, usGamePort, usQueryPort, eServerMode, pchVersionString);
 }
+#endif
 
 ISteamGameServer* CSimplePlatform::SteamGameServer() {
+	#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+	return static_cast<CSteamGameServerAPIContext*>(m_pGameServerContext)->SteamGameServer();
+	#else
 	return ::SteamGameServer();
+	#endif
 }
 
 void CSimplePlatform::SteamGameServer_RunCallbacks() {

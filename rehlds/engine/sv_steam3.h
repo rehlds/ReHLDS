@@ -77,6 +77,10 @@ protected:
 	char m_GameTagsData[MAX_STEAM_TAGS_LENGTH];
 #endif
 
+#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+	CSteamGameServerAPIContext m_SteamGameServerAPIContext;
+#endif
+
 public:
 
 	NOBODY void SetServerType();
@@ -103,6 +107,10 @@ public:
 	void RunFrame();
 	void SendUpdatedServerDetails();
 	void UpdateGameTags();
+
+#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+	CSteamGameServerAPIContext* GetSteamGameServerAPIContext();
+#endif
 };
 
 class CSteam3Client: public CSteam3
@@ -124,6 +132,15 @@ public:
 	void TerminateConnection(uint32, uint16);
 	void InitClient();
 	void RunFrame();
+
+#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+	CSteamAPIContext* GetSteamAPIContext();
+#endif
+
+private:
+#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+	CSteamAPIContext m_SteamAPIContext;
+#endif
 };
 
 extern CSteam3Server *s_Steam3Server;

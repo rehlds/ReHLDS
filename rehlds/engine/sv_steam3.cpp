@@ -297,9 +297,13 @@ void CSteam3Server::Activate()
 			}
 		}
 
+		#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+		if (!CRehldsPlatformHolder::get()->SteamGameServer_InitSafe(unIP, usSteamPort, gamePort, 0xFFFFu, eSMode, gpszVersionString))
+			Sys_Error("Unable to initialize Steam.");
+		#else
 		if (!CRehldsPlatformHolder::get()->SteamGameServer_Init(unIP, usSteamPort, gamePort, 0xFFFFu, eSMode, gpszVersionString))
 			Sys_Error("Unable to initialize Steam.");
-
+		#endif
 		CRehldsPlatformHolder::get()->SteamGameServer()->SetProduct(gpszProductString);
 		CRehldsPlatformHolder::get()->SteamGameServer()->SetModDir(gamedir);
 		CRehldsPlatformHolder::get()->SteamGameServer()->SetDedicatedServer(g_pcls.state == ca_dedicated);
@@ -336,10 +340,10 @@ void CSteam3Server::Shutdown()
 {
 	if (m_bLoggedOn)
 	{
-		SteamGameServer()->EnableHeartbeats(0);
-		SteamGameServer()->LogOff();
+		CRehldsPlatformHolder::get()->SteamGameServer()->EnableHeartbeats(0);
+		CRehldsPlatformHolder::get()->SteamGameServer()->LogOff();
 
-		SteamGameServer_Shutdown();
+		CRehldsPlatformHolder::get()->SteamGameServer_Shutdown();
 		m_bLoggedOn = false;
 	}
 }
@@ -544,6 +548,18 @@ void CSteam3Server::SendUpdatedServerDetails()
 	UpdateGameTags();
 }
 
+#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+CSteamGameServerAPIContext* CSteam3Server::GetSteamGameServerAPIContext()
+{
+	return &m_SteamGameServerAPIContext;
+}
+
+CSteamAPIContext* CSteam3Client::GetSteamAPIContext()
+{
+	return &m_SteamAPIContext;
+}
+#endif
+
 void CSteam3Client::Shutdown()
 {
 	if (m_bLoggedOn)
@@ -555,12 +571,20 @@ void CSteam3Client::Shutdown()
 
 int CSteam3Client::InitiateGameConnection(void *pData, int cbMaxData, uint64 steamID, uint32 unIPServer, uint16 usPortServer, bool bSecure)
 {
+#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+	return m_SteamAPIContext.SteamUser()->InitiateGameConnection(pData, cbMaxData, CSteamID(steamID), ntohl(unIPServer), ntohs(usPortServer), bSecure);
+#else
 	return SteamUser()->InitiateGameConnection(pData, cbMaxData, CSteamID(steamID), ntohl(unIPServer), ntohs(usPortServer), bSecure);
+#endif
 }
 
 void CSteam3Client::TerminateConnection(uint32 unIPServer, uint16 usPortServer)
 {
+#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+	m_SteamAPIContext.SteamUser()->TerminateGameConnection(ntohl(unIPServer), ntohs(usPortServer));
+#else
 	SteamUser()->TerminateGameConnection(ntohl(unIPServer), ntohs(usPortServer));
+#endif
 }
 
 void CSteam3Client::InitClient()
@@ -584,9 +608,15 @@ void CSteam3Client::InitClient()
 		}
 	}
 
+	#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+	if (!SteamAPI_InitSafe())
+		Sys_Error("Failed to initalize authentication interface. Exiting...\n");
+	if (!m_SteamAPIContext.Init())
+		Sys_Error("Failed to initialize Steam API context. Exiting...\n");
+	#else
 	if (!SteamAPI_Init())
 		Sys_Error("Failed to initalize authentication interface. Exiting...\n");
-
+	#endif
 	m_bLogOnResult = false;
 }
 
@@ -671,10 +701,15 @@ bool ISteamApps_BIsSubscribedApp(uint32 appid)
 
 const char *Steam_GetCommunityName()
 {
+#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+	if (Steam3Client()->GetSteamAPIContext()->SteamFriends())
+		return Steam3Client()->GetSteamAPIContext()->SteamFriends()->GetPersonaName();
+	return NULL;
+#else
 	if (SteamFriends())
 		return SteamFriends()->GetPersonaName();
-
 	return NULL;
+#endif
 }
 
 qboolean EXT_FUNC Steam_NotifyClientConnect_api(IGameClient *cl, const void *pvSteam2Key, unsigned int ucbSteam2Key)
