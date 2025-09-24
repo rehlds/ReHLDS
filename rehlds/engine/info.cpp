@@ -899,6 +899,7 @@ qboolean Info_IsValid(const char *s)
 			if (*s == '.' && *(s + 1) == '.')
 				return FALSE;
 
+			// control characters are prohibited
 			if (iscntrl((unsigned char)*s))
 				return FALSE;
 
