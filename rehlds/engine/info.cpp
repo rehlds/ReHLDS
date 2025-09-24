@@ -589,7 +589,7 @@ qboolean Info_SetValueForStarKey(char *s, const char *key, const char *value, si
 
 	for (const char *p = key; *p; p++)
 	{
-		if (iscntrl(*p))
+		if (iscntrl((unsigned char)*p))
 		{
 			Con_Printf("Can't use keys with ASCII control characters\n");
 			return FALSE;
@@ -598,7 +598,7 @@ qboolean Info_SetValueForStarKey(char *s, const char *key, const char *value, si
 
 	for (const char *p = value; *p; p++)
 	{
-		if (iscntrl(*p))
+		if (iscntrl((unsigned char)*p))
 		{
 			Con_Printf("Can't use values with ASCII control characters\n");
 			return FALSE;
@@ -899,6 +899,9 @@ qboolean Info_IsValid(const char *s)
 			if (*s == '.' && *(s + 1) == '.')
 				return FALSE;
 
+			if (iscntrl((unsigned char)*s))
+				return FALSE;
+
 			s++;
 		}
 
@@ -920,6 +923,10 @@ qboolean Info_IsValid(const char *s)
 
 			// ".." deprecated
 			if (*s == '.' && *(s + 1) == '.')
+				return FALSE;
+
+			// control characters are prohibited
+			if (iscntrl((unsigned char)*s))
 				return FALSE;
 
 			s++;
