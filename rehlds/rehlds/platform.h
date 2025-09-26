@@ -48,7 +48,11 @@ public:
 	virtual bool SteamAPI_Init() = 0;
 	virtual void SteamAPI_UnregisterCallResult(class CCallbackBase *pCallback, SteamAPICall_t hAPICall) = 0;
 	virtual ISteamApps* SteamApps() = 0;
+	#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+	virtual bool SteamGameServer_InitSafe(uint32 unIP, uint16 usSteamPort, uint16 usGamePort, uint16 usQueryPort, EServerMode eServerMode, const char *pchVersionString) = 0;
+	#else
 	virtual bool SteamGameServer_Init(uint32 unIP, uint16 usSteamPort, uint16 usGamePort, uint16 usQueryPort, EServerMode eServerMode, const char *pchVersionString) = 0;
+	#endif
 	virtual ISteamGameServer* SteamGameServer() = 0;
 	virtual void SteamGameServer_RunCallbacks() = 0;
 	virtual void SteamAPI_RunCallbacks() = 0;
@@ -61,6 +65,11 @@ private:
 #ifdef _WIN32
 	setsockopt_proto setsockopt_v11;
 	HMODULE wsock;
+#endif
+
+#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+	void* m_pGameServerContext;    // Actually CSteamGameServerAPIContext*
+	void* m_pClientContext;        // Actually CSteamAPIContext*
 #endif
 
 public:
@@ -105,7 +114,11 @@ public:
 	virtual bool SteamAPI_Init();
 	virtual void SteamAPI_UnregisterCallResult(class CCallbackBase *pCallback, SteamAPICall_t hAPICall);
 	virtual ISteamApps* SteamApps();
+	#ifdef VERSION_SAFE_STEAM_API_INTERFACES
+	virtual bool SteamGameServer_InitSafe(uint32 unIP, uint16 usSteamPort, uint16 usGamePort, uint16 usQueryPort, EServerMode eServerMode, const char *pchVersionString);
+	#else
 	virtual bool SteamGameServer_Init(uint32 unIP, uint16 usSteamPort, uint16 usGamePort, uint16 usQueryPort, EServerMode eServerMode, const char *pchVersionString);
+	#endif
 	virtual ISteamGameServer* SteamGameServer();
 	virtual void SteamGameServer_RunCallbacks();
 	virtual void SteamAPI_RunCallbacks();
