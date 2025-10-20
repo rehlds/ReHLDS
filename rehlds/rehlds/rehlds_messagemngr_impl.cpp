@@ -650,10 +650,11 @@ void MessageImpl::setParamString(size_t index, const char *value)
 	// Calculate the length of the string
 	Param_t &param = m_params[index];
 
+	size_t oldlen = param.newlen;
 	param.newlen = Q_strlen(value) + 1;
 
 	// Transform buffer to accommodate the new string length
-	setTxformBuffer(index, param.posBack, param.oldlen, param.newlen);
+	setTxformBuffer(index, param.posBack, oldlen, param.newlen);
 
 	// Copy the string value to the buffer
 	Q_memcpy(m_Storage[BACK].buf.data + param.posBack, value, param.newlen);
