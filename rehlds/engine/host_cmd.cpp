@@ -2586,13 +2586,36 @@ void Host_SetInfo_f(void)
 		Con_Printf("usage: setinfo [ <key> <value> ]\n");
 		return;
 	}
+
+	const char *key = Cmd_Argv(1);
+	const char *value = Cmd_Argv(2);
+
 	if (cmd_source == src_command)
 	{
-		Info_SetValueForKey(g_pcls.userinfo, Cmd_Argv(1), Cmd_Argv(2), MAX_INFO_STRING);
+		Info_SetValueForKey(g_pcls.userinfo, key, value, MAX_INFO_STRING);
 		Cmd_ForwardToServer();
 		return;
 	}
-	Info_SetValueForKey(host_client->userinfo, Cmd_Argv(1), Cmd_Argv(2), MAX_INFO_STRING);
+
+#ifdef REHLDS_FIXES
+	// client trying to set a * key
+	if (key[0] == '*')
+	{
+		// allow clients to set specific '*' prefixed userinfo keys for avatar IDs
+		if (!Q_strcmp(key + 1, "aid"))
+		{
+			Info_SetValueForStarKey(host_client->userinfo, key, value, MAX_INFO_STRING);
+			host_client->sendinfo = TRUE;
+			return;
+		}
+
+		// send response to the client instead of server console
+		SV_ClientPrintf("Can't set %s keys\n", key);
+		return;
+	}
+#endif
+
+	Info_SetValueForKey(host_client->userinfo, key, value, MAX_INFO_STRING);
 	host_client->sendinfo = TRUE;
 }
 
