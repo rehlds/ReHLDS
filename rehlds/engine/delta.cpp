@@ -414,7 +414,7 @@ void DELTA_ClearFlags(delta_t *pFields)
 
 int DELTA_TestDelta(unsigned char *from, unsigned char *to, delta_t *pFields)
 {
-#if (defined(REHLDS_OPT_PEDANTIC) || defined(REHLDS_FIXES)) && defined REHLDSJIT
+#if (defined(REHLDS_OPT_PEDANTIC) || defined(REHLDS_FIXES)) && defined REHLDS_JIT
 	return DELTAJit_TestDelta(from, to, pFields);
 #else
 	int i;
@@ -1627,3 +1627,4 @@ void DELTA_Shutdown(void)
 	DELTA_ClearDefinitions();
 	DELTA_ClearRegistrations();
 }
+
