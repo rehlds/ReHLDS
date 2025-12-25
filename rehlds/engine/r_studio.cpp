@@ -1153,5 +1153,3 @@ void R_ResetSvBlending()
 {
 	g_pSvBlendingAPI = &svBlending;
 }
-
-
