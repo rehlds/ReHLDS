@@ -1109,7 +1109,10 @@ int R_GetStudioBounds(const char *filename, float *mins, float *maxs)
 	qboolean usingReadBuffer = 0;
 
 	for (int i = 0; i < 3; i++)
-		mins[i] = maxs[i] = vec3_origin[i];
+	{
+		VectorClear(mins);
+		VectorClear(maxs);
+	}
 
 	if (!Q_strstr(filename, "models") || !Q_strstr(filename, ".mdl"))
 		return 0;
@@ -1150,4 +1153,5 @@ void R_ResetSvBlending()
 {
 	g_pSvBlendingAPI = &svBlending;
 }
+
 
