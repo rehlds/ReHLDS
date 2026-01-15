@@ -2160,6 +2160,26 @@ qboolean Mesage_CheckUserMessageLength(UserMsg *msg, sizebuf_t *buf)
 	}
 	else if (msg->iSize != buf->cursize)
 	{
+#ifdef REHLDS_FIXES
+		// auto-padding for fixed-size UserMsg underflows
+		if (buf->cursize < msg->iSize)
+		{
+			AlertMessage(at_warning, "%s: User Msg '%s' underflow (%d/%d). Auto-padding with zeros.\n", __func__, msg->szName, buf->cursize, msg->iSize);
+
+			while (buf->cursize < msg->iSize)
+			{
+				if (buf->flags & SIZEBUF_OVERFLOWED)
+				{
+					Sys_Error("%s: Buffer overflow while padding User Msg '%s'\n", __func__, msg->szName);
+				}
+
+				MSG_WriteByte(buf, 0);
+			}
+
+			return FALSE;
+		}
+#endif // REHLDS_FIXES
+
 		Sys_Error("%s: User Msg '%s': %d bytes written, expected %d\n", __func__, msg->szName, buf->cursize, msg->iSize);
 	}
 
