@@ -2720,7 +2720,7 @@ void Host_Say(qboolean teamonly)
 
 		host_client = client;
 
-		PF_MessageBegin_I(MSG_ONE, RegUserMsg("SayText", -1), NULL, &g_psv.edicts[j + 1]);
+		PF_MessageBegin_I(MSG_ONE, SV_RegUserMsg("SayText", -1), NULL, &g_psv.edicts[j + 1]);
 		PF_WriteByte_I(0);
 #ifdef REHLDS_FIXES
 		PF_WriteString_I(preparedText);
@@ -2801,7 +2801,7 @@ void Host_Tell_f(void)
 
 		host_client = client;
 
-		PF_MessageBegin_I(MSG_ONE, RegUserMsg("SayText", -1), NULL, &g_psv.edicts[j + 1]);
+		PF_MessageBegin_I(MSG_ONE, SV_RegUserMsg("SayText", -1), NULL, &g_psv.edicts[j + 1]);
 		PF_WriteByte_I(0);
 		PF_WriteString_I(text);
 		PF_MessageEnd_I();

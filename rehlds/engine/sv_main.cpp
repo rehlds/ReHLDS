@@ -1487,17 +1487,17 @@ void SV_WriteSpawn(sizebuf_t *msg)
 	NotifyDedicatedServerUI("UpdatePlayers");
 }
 
-void EXT_FUNC SV_SendUserReg(sizebuf_t *msg)
+void SV_SendUserReg(sizebuf_t *msg, UserMsg *pUserMsgs)
 {
-	for (UserMsg *pMsg = sv_gpNewUserMsgs; pMsg; pMsg = pMsg->next)
+	if (!pUserMsgs)
+		return;
+
+	for (UserMsg *pMsg = pUserMsgs; pMsg; pMsg = pMsg->next)
 	{
 		MSG_WriteByte(msg, svc_newusermsg);
 		MSG_WriteByte(msg, pMsg->iMsg);
 		MSG_WriteByte(msg, pMsg->iSize);
-		MSG_WriteLong(msg, *(int *)&pMsg->szName[0]);
-		MSG_WriteLong(msg, *(int *)&pMsg->szName[4]);
-		MSG_WriteLong(msg, *(int *)&pMsg->szName[8]);
-		MSG_WriteLong(msg, *(int *)&pMsg->szName[12]);
+		MSG_WriteBuf(msg, sizeof(pMsg->szName), pMsg->szName);
 	}
 }
 
@@ -1546,13 +1546,7 @@ void SV_New_f(void)
 
 	SV_SendServerinfo(&msg, host_client);
 
-	if (sv_gpUserMsgs)
-	{
-		UserMsg *pTemp = sv_gpNewUserMsgs;
-		sv_gpNewUserMsgs = sv_gpUserMsgs;
-		SV_SendUserReg(&msg);
-		sv_gpNewUserMsgs = pTemp;
-	}
+	SV_SendUserReg(&msg, sv_gpUserMsgs);
 	host_client->hasusrmsgs = TRUE;
 
 	// TODO: set userinfo to be sent?
@@ -5088,39 +5082,27 @@ void SV_UpdateToReliableMessages(void)
 			SV_UpdateUserInfo(client);
 		}
 
-		if (!client->fakeclient && (client->active || client->connected))
-		{
-			if (sv_gpNewUserMsgs != NULL)
-			{
-				SV_SendUserReg(&client->netchan.message);
-			}
-		}
+		// Never send a new user messages to bots
+		if (client->fakeclient)
+			continue;
+
+		if (!client->active && !client->connected)
+			continue;
+
+		// Send only new list of user messages
+		SV_SendUserReg(&client->netchan.message, sv_gpNewUserMsgs);
 	}
 
 	// Link new user messages to sent chain
-	if (sv_gpNewUserMsgs != NULL)
-	{
-		UserMsg *pMsg = sv_gpUserMsgs;
-		if (pMsg != NULL)
-		{
-			while (pMsg->next)
-			{
-				pMsg = pMsg->next;
-			}
-			pMsg->next = sv_gpNewUserMsgs;
-		}
-		else
-		{
-			sv_gpUserMsgs = sv_gpNewUserMsgs;
-		}
-		sv_gpNewUserMsgs = NULL;
-	}
+	SV_LinkUserMessages();
 
+	// Clear the server datagram if it overflowed
 	if (g_psv.datagram.flags & SIZEBUF_OVERFLOWED)
 	{
 		Con_DPrintf("sv.datagram overflowed!\n");
 		SZ_Clear(&g_psv.datagram);
 	}
+
 	if (g_psv.spectator.flags & SIZEBUF_OVERFLOWED)
 	{
 		Con_DPrintf("sv.spectator overflowed!\n");
@@ -6119,6 +6101,29 @@ void MoveCheckedResourcesToFirstPositions()
 }
 #endif // REHLDS_FIXES
 
+// Moves pending new user messages to main list of sv_gpUserMsgs
+void SV_LinkUserMessages()
+{
+	if (!sv_gpNewUserMsgs)
+		return;
+
+	// Link new user messages to sent chain
+	UserMsg *pMsg = sv_gpUserMsgs;
+	if (pMsg)
+	{
+		while (pMsg->next)
+			pMsg = pMsg->next;
+
+		pMsg->next = sv_gpNewUserMsgs;
+	}
+	else
+	{
+		sv_gpUserMsgs = sv_gpNewUserMsgs;
+	}
+
+	sv_gpNewUserMsgs = NULL;
+}
+
 void SV_ActivateServer(int runPhysics)
 {
 	g_RehldsHookchains.m_SV_ActivateServer.callChain(SV_ActivateServer_internal, runPhysics);
@@ -6198,16 +6203,13 @@ void EXT_FUNC SV_ActivateServer_internal(int runPhysics)
 				Netchan_Transmit(&cl->netchan, 0, NULL);
 			}
 			else
-				SV_SendServerinfo(&msg, cl);
-
-			if (sv_gpUserMsgs)
 			{
-				pTemp = sv_gpNewUserMsgs;
-				sv_gpNewUserMsgs = sv_gpUserMsgs;
-				SV_SendUserReg(&msg);
-				sv_gpNewUserMsgs = pTemp;
+				SV_SendServerinfo(&msg, cl);
 			}
+
+			SV_SendUserReg(&msg, sv_gpUserMsgs);
 			cl->hasusrmsgs = TRUE;
+
 			Netchan_CreateFragments(TRUE, &cl->netchan, &msg);
 			Netchan_FragSend(&cl->netchan);
 			SZ_Clear(&msg);
@@ -6589,15 +6591,25 @@ void SV_ClearEntities(void)
 			ReleaseEntityDLLFields(pEdict);
 	}
 }
-int EXT_FUNC RegUserMsg(const char *pszName, int iSize)
+
+int EXT_FUNC SV_RegUserMsg(const char *pszName, int iSize)
 {
 	if (giNextUserMsg >= MAX_USERMESSAGES)
+	{
+		Con_Printf("%s: Not enough room to register message %s, limit: %i\n", __func__, pszName, MAX_USERMESSAGES);
 		return 0;
+	}
+
+	if (!pszName)
+		return 0;
+
+	if (Q_strlen(pszName) >= MAX_USERMESSAGES_LENGTH - 1)
+	{
+		Con_Printf("%s: Message name too long: %s\n", __func__, pszName);
+		return 0;
+	}
 
 	if (iSize > MAX_USER_MSG_DATA)
-		return 0;
-
-	if (!pszName || Q_strlen(pszName) >= MAX_USERMESSAGES_LENGTH - 1)
 		return 0;
 
 	for (UserMsg *pMsg = sv_gpUserMsgs; pMsg; pMsg = pMsg->next)

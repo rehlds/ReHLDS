@@ -138,7 +138,7 @@ enginefuncs_t g_engfuncsExportedToDlls = {
 	GetVarsOfEnt, PEntityOfEntOffset,
 	EntOffsetOfPEntity, IndexOfEdict,
 	PEntityOfEntIndex, FindEntityByVars,
-	GetModelPtr, RegUserMsg,
+	GetModelPtr, SV_RegUserMsg,
 	AnimationAutomove, GetBonePosition,
 	FunctionFromName, NameForFunction,
 	ClientPrintf, ServerPrint,

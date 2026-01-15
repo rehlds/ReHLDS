@@ -488,6 +488,11 @@ void EXT_FUNC SetServerPause(bool setPause)
 #endif // REHLDS_FIXES
 }
 
+void SV_SendUserReg_api(sizebuf_t *msg)
+{
+	SV_SendUserReg(msg, sv_gpUserMsgs);
+}
+
 CRehldsServerStatic g_RehldsServerStatic;
 CRehldsServerData g_RehldsServerData;
 CRehldsHookchains g_RehldsHookchains;
@@ -503,7 +508,7 @@ RehldsFuncs_t g_RehldsApiFuncs =
 	&NET_SendPacket_api,
 	&Cmd_TokenizeString,
 	&SV_CheckChallenge_api,
-	&SV_SendUserReg,
+	&SV_SendUserReg_api,
 	&SV_WriteDeltaDescriptionsToClient,
 	&SV_SetMoveVars_api,
 	&SV_WriteMovevarsToClient_api,
