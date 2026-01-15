@@ -2275,6 +2275,35 @@ void EXT_FUNC PF_MessageEnd_I(void)
 		}
 
 		isVariableLengthMsg = Mesage_CheckUserMessageLength(pUserMsg, &gMsgBuffer);
+
+#ifdef REHLDS_FIXES
+		// ensure that the new user message registered after the server spawn
+		// will be send before the main user message
+		if (g_psv.state == ss_active && sv_gpNewUserMsgs)
+		{
+			// Send new user message to all connected clients
+			for (int i = 0; i < g_psvs.maxclients; i++)
+			{
+				client_t *client = &g_psvs.clients[i];
+
+				if (!client->edict)
+					continue;
+
+				// Never send a new user messages to bots
+				if (client->fakeclient)
+					continue;
+
+				if (!client->active && !client->connected)
+					continue;
+
+				// Send only new list of user messages
+				SV_SendUserReg(&client->netchan.message, sv_gpNewUserMsgs);
+			}
+
+			// Moves pending new user messages to main list of sv_gpUserMsgs
+			SV_LinkUserMessages();
+		}
+#endif
 	}
 
 #ifdef REHLDS_FIXES
