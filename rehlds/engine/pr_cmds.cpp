@@ -2146,11 +2146,82 @@ void EXT_FUNC PF_MessageBegin_I(int msg_dest, int msg_type, const float *pOrigin
 	gMsgBuffer.cursize = 0;
 }
 
+// Validates user message type and checks to see if it's variable length
+// Returns TRUE if variable length is correctly
+qboolean Mesage_CheckUserMessageLength(UserMsg *msg, sizebuf_t *buf)
+{
+	if (msg->iSize == -1)
+	{
+		// Limit packet sizes
+		if (buf->cursize > MAX_USER_MSG_DATA)
+			Host_Error("%s: Refusing to send user message %s of %i bytes to client, user message size limit is %i bytes\n", __func__, msg->szName, buf->cursize, MAX_USER_MSG_DATA);
+
+		return TRUE;
+	}
+	else if (msg->iSize != buf->cursize)
+	{
+		Sys_Error("%s: User Msg '%s': %d bytes written, expected %d\n", __func__, msg->szName, buf->cursize, msg->iSize);
+	}
+
+	return FALSE;
+}
+
+void WriteMessageToBuffer(qboolean isVariableLengthMsg, sizebuf_t *buf)
+{
+	if (!buf->data)
+		return;
+
+	if ((gMsgDest == MSG_BROADCAST && !SZ_HasSpace(buf, gMsgBuffer.cursize)))
+		return;
+
+	// With `REHLDS_FIXES` enabled meaning of `svc_startofusermessages` changed a bit: now it is an id of the first user message
+#ifdef REHLDS_FIXES
+	if (gMsgType >= svc_startofusermessages)
+#else // REHLDS_FIXES
+	if (gMsgType > svc_startofusermessages)
+#endif // REHLDS_FIXES
+	{
+		if (gMsgDest == MSG_ONE || gMsgDest == MSG_ONE_UNRELIABLE)
+		{
+			int entnum = NUM_FOR_EDICT((const edict_t *)gMsgEntity);
+			if (entnum < 1 || entnum > g_psvs.maxclients)
+				Host_Error("%s: not a client", __func__);
+
+			client_t *client = &g_psvs.clients[entnum - 1];
+
+			// Never output to bots
+			if (client->fakeclient)
+				return;
+
+			if (!client->active && !client->spawned)
+				return;
+
+			// The client didn't receive list of user messages (svc_newusermsg)
+			if (!client->hasusrmsgs)
+				return;
+		}
+	}
+
+	// write the message type to the buffer
+	MSG_WriteByte(buf, gMsgType);
+
+	// If var-length user-message, record the data length
+	if (isVariableLengthMsg)
+	{
+		MSG_WriteByte(buf, gMsgBuffer.cursize);
+	}
+
+	// Dump buffered data into message stream
+	MSG_WriteBuf(buf, gMsgBuffer.cursize, gMsgBuffer.data);
+}
+
 void EXT_FUNC PF_MessageEnd_I(void)
 {
-	qboolean MsgIsVarLength = 0;
+	qboolean isVariableLengthMsg = FALSE;
+
 	if (!gMsgStarted)
 		Sys_Error("%s: called with no active message\n", __func__);
+
 	gMsgStarted = FALSE;
 
 	if (gMsgEntity && (gMsgEntity->v.flags & FL_FAKECLIENT))
@@ -2183,70 +2254,34 @@ void EXT_FUNC PF_MessageEnd_I(void)
 			return;
 		}
 
-		if (pUserMsg->iSize == -1)
-		{
-			MsgIsVarLength = 1;
-
-			// Limit packet sizes
-			if (gMsgBuffer.cursize > MAX_USER_MSG_DATA)
-				Host_Error("%s: Refusing to send user message %s of %i bytes to client, user message size limit is %i bytes\n", __func__, pUserMsg->szName, gMsgBuffer.cursize, MAX_USER_MSG_DATA);
-		}
-		else
-		{
-			if (pUserMsg->iSize != gMsgBuffer.cursize)
-				Sys_Error("%s: User Msg '%s': %d bytes written, expected %d\n", __func__, pUserMsg->szName, gMsgBuffer.cursize, pUserMsg->iSize);
-		}
+		isVariableLengthMsg = Mesage_CheckUserMessageLength(pUserMsg, &gMsgBuffer);
 	}
+
 #ifdef REHLDS_FIXES
-	auto writer = [MsgIsVarLength]
-#endif
-	{
-		sizebuf_t * pBuffer = WriteDest_Parm(gMsgDest);
-		if ((gMsgDest == MSG_BROADCAST && gMsgBuffer.cursize + pBuffer->cursize > pBuffer->maxsize) || !pBuffer->data)
-			return;
-
-// With `REHLDS_FIXES` enabled meaning of `svc_startofusermessages` changed a bit: now it is an id of the first user message
-#ifdef REHLDS_FIXES
-		if (gMsgType >= svc_startofusermessages && (gMsgDest == MSG_ONE || gMsgDest == MSG_ONE_UNRELIABLE))
-#else // REHLDS_FIXES
-		if (gMsgType > svc_startofusermessages && (gMsgDest == MSG_ONE || gMsgDest == MSG_ONE_UNRELIABLE))
-#endif // REHLDS_FIXES
-		{
-			int entnum = NUM_FOR_EDICT((const edict_t *)gMsgEntity);
-			if (entnum < 1 || entnum > g_psvs.maxclients)
-				Host_Error("%s: not a client", __func__);
-
-			client_t* client = &g_psvs.clients[entnum - 1];
-			if (client->fakeclient || !client->hasusrmsgs || (!client->active && !client->spawned))
-				return;
-		}
-
-		MSG_WriteByte(pBuffer, gMsgType);
-		if (MsgIsVarLength)
-			MSG_WriteByte(pBuffer, gMsgBuffer.cursize);
-		MSG_WriteBuf(pBuffer, gMsgBuffer.cursize, gMsgBuffer.data);
-	}
-#ifdef REHLDS_FIXES
-	;
-
 	if (gMsgDest == MSG_ALL)
 	{
 		gMsgDest = MSG_ONE;
+
 		for (int i = 0; i < g_psvs.maxclients; i++)
 		{
 			gMsgEntity = g_psvs.clients[i].edict;
-			if (gMsgEntity == nullptr)
+
+			if (!gMsgEntity)
 				continue;
+
 			if (FBitSet(gMsgEntity->v.flags, FL_FAKECLIENT))
 				continue;
-			writer();
+
+			sizebuf_t *pBuffer = WriteDest_Parm(gMsgDest);
+			WriteMessageToBuffer(isVariableLengthMsg, pBuffer);
 		}
 	}
 	else
-	{
-		writer();
-	}
 #endif
+	{
+		sizebuf_t *pBuffer = WriteDest_Parm(gMsgDest);
+		WriteMessageToBuffer(isVariableLengthMsg, pBuffer);
+	}
 
 	switch (gMsgDest)
 	{

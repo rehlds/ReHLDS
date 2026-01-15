@@ -1164,6 +1164,14 @@ void SZ_Clear(sizebuf_t *buf)
 	buf->cursize = 0;
 }
 
+qboolean SZ_HasSpace(sizebuf_t *buf, int length)
+{
+	if ((buf->cursize + length) > buf->maxsize)
+		return FALSE;
+
+	return TRUE;
+}
+
 qboolean SZ_HasSpaceToRead(const sizebuf_t *buf, int length)
 {
 	if ((msg_readcount + length) > buf->maxsize)
@@ -1191,7 +1199,7 @@ void *EXT_FUNC SZ_GetSpace(sizebuf_t *buf, int length)
 		Sys_Error("%s: %i negative length on %s", __func__, length, buffername);
 	}
 
-	if (buf->cursize + length > buf->maxsize)
+	if (!SZ_HasSpace(buf, length))
 	{
 #ifdef REHLDS_FIXES
 		if (!(buf->flags & SIZEBUF_ALLOW_OVERFLOW))

@@ -159,6 +159,7 @@ void MSG_ReadUsercmd(usercmd_t *to, usercmd_t *from);
 
 void SZ_Alloc(const char *name, sizebuf_t *buf, int startsize);
 void SZ_Clear(sizebuf_t *buf);
+qboolean SZ_HasSpace(sizebuf_t *buf, int length);
 qboolean SZ_HasSpaceToRead(const sizebuf_t *buf, int length);
 qboolean SZ_HasSomethingToRead(const sizebuf_t *buf, int length);
 void *SZ_GetSpace(sizebuf_t *buf, int length);
