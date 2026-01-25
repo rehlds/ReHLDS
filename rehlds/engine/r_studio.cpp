@@ -1108,8 +1108,8 @@ int R_GetStudioBounds(const char *filename, float *mins, float *maxs)
 	int iret = 0;
 	qboolean usingReadBuffer = 0;
 
-	for (int i = 0; i < 3; i++)
-		mins[0] = maxs[0] = vec3_origin[i];
+	VectorClear(mins);
+	VectorClear(maxs);
 
 	if (!Q_strstr(filename, "models") || !Q_strstr(filename, ".mdl"))
 		return 0;
