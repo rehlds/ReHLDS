@@ -490,7 +490,7 @@ void EXT_FUNC SetServerPause(bool setPause)
 
 void SV_SendUserReg_api(sizebuf_t *msg)
 {
-	SV_SendUserReg(msg, sv_gpUserMsgs);
+	SV_SendUserReg(msg, sv_gpNewUserMsgs);
 }
 
 CRehldsServerStatic g_RehldsServerStatic;
@@ -962,3 +962,4 @@ IRehldsFlightRecorder* EXT_FUNC CRehldsApi::GetFlightRecorder() {
 }
 
 EXPOSE_SINGLE_INTERFACE(CRehldsApi, IRehldsApi, VREHLDS_HLDS_API_VERSION);
+
