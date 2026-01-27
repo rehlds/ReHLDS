@@ -172,3 +172,8 @@ void DELTA_PrintStats(const char *name, delta_t *p);
 void DELTA_DumpStats_f(void);
 void DELTA_Init(void);
 void DELTA_Shutdown(void);
+
+#ifdef REHLDS_FIXES
+void DELTA_SetTimeBaseOverride(double time, double offset);
+void DELTA_ClearTimeBaseOverride(void);
+#endif

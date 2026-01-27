@@ -313,6 +313,11 @@ static delta_definition_t g_ClientDataDefinition[] =
 
 #endif // Delta_definitions_region
 
+#ifdef REHLDS_FIXES
+static double g_TimeWindowBase = -1.0;
+static double g_TimeWindowOffset = 0.0;
+#endif
+
 delta_description_t *DELTA_FindField(delta_t *pFields, const char *pszField)
 {
 	int fieldCount = pFields->fieldCount;
@@ -708,14 +713,28 @@ void DELTA_WriteMarkedFields(unsigned char *from, unsigned char *to, delta_t *pF
 		case DT_TIMEWINDOW_8:
 		{
 			f2 = *(float *)&to[pTest->fieldOffset];
-			int32 twVal = (int)(g_psv.time * 100.0) - (int)(f2 * 100.0);
+#ifdef REHLDS_FIXES
+			double timeBase = (g_TimeWindowBase >= 0.0) ? g_TimeWindowBase : g_psv.time;
+			double fieldTime = (g_TimeWindowBase >= 0.0) ? (f2 - g_TimeWindowOffset) : f2;
+#else
+			double timeBase = g_psv.time;
+			double fieldTime = f2;
+#endif
+			int32 twVal = (int)(timeBase * 100.0) - (int)(fieldTime * 100.0);
 			MSG_WriteSBits(twVal, 8);
 			break;
 		}
 		case DT_TIMEWINDOW_BIG:
 		{
 			f2 = *(float *)&to[pTest->fieldOffset];
-			int32 twVal = (int)(g_psv.time * pTest->premultiply) - (int)(f2 * pTest->premultiply);
+#ifdef REHLDS_FIXES
+			double timeBase = (g_TimeWindowBase >= 0.0) ? g_TimeWindowBase : g_psv.time;
+			double fieldTime = (g_TimeWindowBase >= 0.0) ? (f2 - g_TimeWindowOffset) : f2;
+#else
+			double timeBase = g_psv.time;
+			double fieldTime = f2;
+#endif
+			int32 twVal = (int)(timeBase * pTest->premultiply) - (int)(fieldTime * pTest->premultiply);
 			MSG_WriteSBits((int32)twVal, pTest->significant_bits);
 			break;
 		}
@@ -1628,3 +1647,16 @@ void DELTA_Shutdown(void)
 	DELTA_ClearRegistrations();
 }
 
+#ifdef REHLDS_FIXES
+void DELTA_SetTimeBaseOverride(const double time, const double offset)
+{
+	g_TimeWindowBase = time;
+	g_TimeWindowOffset = offset;
+}
+
+void DELTA_ClearTimeBaseOverride()
+{
+	g_TimeWindowBase = -1.0;
+	g_TimeWindowOffset = 0.0;
+}
+#endif
