@@ -81,6 +81,7 @@ This means that plugins that do binary code analysis (Orpheu for example) probab
 <li>sv_rehlds_maxclients_from_single_ip // Limit number of connections at the same time from single IP address, not confuse to already connected players. Default: 5
 <li>sv_rehlds_local_gametime &lt;1|0&gt; // A feature of local gametime which decrease "lags" if you run same map for a long time. Default: 0
 <li>sv_rehlds_allow_large_sprays &lt;1|0&gt; // Allow larger custom logos than 64x64. Default: 1
+<li>sv_rehlds_custom_gd &lt;1|0&gt; // Allow user to join the server using a different game. Default: 0
 <li>sv_use_entity_file // Use custom entity file for a map. Path to an entity file will be "maps/[map name].ent". 0 - use original entities. 1 - use .ent files from maps directory. 2 - use .ent files from maps directory and create new .ent file if not exist.
 <li>sv_usercmd_custom_random_seed // When enabled server will populate an additional random seed independent of the client. Default: 0
 <li>sv_net_incoming_decompression &lt;1|0&gt; // When enabled server will decompress of incoming compressed file transfer payloads. Default: 1
