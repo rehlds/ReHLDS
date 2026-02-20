@@ -382,6 +382,7 @@ struct RehldsFuncs_t {
 	void(*RemoveExtDll)(void *hModule);
 	void(*RemoveCvarListener)(const char *var_name, cvar_callback_t func);
 	ENTITYINIT(*GetEntityInit)(char *pszClassName);
+	void(*Host_Pause)(bool setPause);
 
 	// Read functions
 	int(*MSG_ReadChar)();
