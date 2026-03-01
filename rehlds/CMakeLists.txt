@@ -38,6 +38,10 @@ set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wall -fno-rtti -fno-exceptions -fno-strict-
 # Remove noxref code and data
 set(COMPILE_FLAGS "${COMPILE_FLAGS} -ffunction-sections -fdata-sections")
 
+# Glibc >=2.41 fix
+set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wa,--noexecstack")
+set(LINK_FLAGS "${LINK_FLAGS} -Wl,-z,noexecstack")
+
 if (DEBUG)
 	set(COMPILE_FLAGS "${COMPILE_FLAGS} -g3 -O3 -ggdb")
 else()

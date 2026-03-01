@@ -14,6 +14,11 @@ set(LINK_FLAGS "-m32")
 
 set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wall -fno-exceptions -fno-strict-aliasing -fno-strict-overflow")
 
+# Glibc >=2.41 fix
+set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wa,--noexecstack")
+set(LINK_FLAGS "${LINK_FLAGS} -Wl,-z,noexecstack")
+
+
 if (DEBUG)
 	set(COMPILE_FLAGS "${COMPILE_FLAGS} -g3 -O3 -ggdb")
 else()
