@@ -20,6 +20,8 @@
 cmake_minimum_required(VERSION 3.1)
 project(engine CXX)
 
+include(CheckCXXCompilerFlag)
+
 option(DEBUG "Build with debug information." OFF)
 option(USE_STATIC_LIBSTDC "Enables static linking libstdc++." OFF)
 
@@ -38,9 +40,16 @@ set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wall -fno-rtti -fno-exceptions -fno-strict-
 # Remove noxref code and data
 set(COMPILE_FLAGS "${COMPILE_FLAGS} -ffunction-sections -fdata-sections")
 
-# Glibc >=2.41 fix
-set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wa,--noexecstack")
-set(LINK_FLAGS "${LINK_FLAGS} -Wl,-z,noexecstack")
+check_cxx_compiler_flag("-Wa,--noexecstack" HAS_NOEXECSTACK_ASM)
+check_cxx_compiler_flag("-Wl,-z,noexecstack" HAS_NOEXECSTACK_LINK)
+
+if(HAS_NOEXECSTACK_ASM)
+	set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wa,--noexecstack")
+endif()
+
+if(HAS_NOEXECSTACK_LINK)
+	set(LINK_FLAGS "${LINK_FLAGS} -Wl,-z,noexecstack")
+endif()
 
 if (DEBUG)
 	set(COMPILE_FLAGS "${COMPILE_FLAGS} -g3 -O3 -ggdb")

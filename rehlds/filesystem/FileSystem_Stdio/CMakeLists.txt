@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.1)
 project(filesystem_stdio CXX)
 
+include(CheckCXXCompilerFlag)
+
 option(DEBUG "Build with debug information." OFF)
 
 set(CMAKE_CXX_STANDARD 14)
@@ -14,9 +16,16 @@ set(LINK_FLAGS "-m32")
 
 set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wall -fno-exceptions -fno-strict-aliasing -fno-strict-overflow")
 
-# Glibc >=2.41 fix
-set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wa,--noexecstack")
-set(LINK_FLAGS "${LINK_FLAGS} -Wl,-z,noexecstack")
+check_cxx_compiler_flag("-Wa,--noexecstack" HAS_NOEXECSTACK_ASM)
+check_cxx_compiler_flag("-Wl,-z,noexecstack" HAS_NOEXECSTACK_LINK)
+
+if(HAS_NOEXECSTACK_ASM)
+    set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wa,--noexecstack")
+endif()
+
+if(HAS_NOEXECSTACK_LINK)
+    set(LINK_FLAGS "${LINK_FLAGS} -Wl,-z,noexecstack")
+endif()
 
 if (DEBUG)
 	set(COMPILE_FLAGS "${COMPILE_FLAGS} -g3 -O3 -ggdb")
