@@ -254,6 +254,10 @@ typedef IVoidHookChainRegistryImpl<const char*> CRehldsHookRegistry_SV_ClientPri
 typedef IHookChainImpl<bool, edict_t*, edict_t*> CRehldsHook_SV_AllowPhysent;
 typedef IHookChainRegistryImpl<bool, edict_t*, edict_t*> CRehldsHookRegistry_SV_AllowPhysent;
 
+// SV_TestEntityPosition hook
+typedef IHookChainImpl<edict_t*, edict_t*> CRehldsHook_SV_TestEntityPosition;
+typedef IHookChainRegistryImpl<edict_t*, edict_t*> CRehldsHookRegistry_SV_TestEntityPosition;
+
 //SV_SendResources hook
 typedef IVoidHookChainImpl<sizebuf_t *> CRehldsHook_SV_SendResources;
 typedef IVoidHookChainRegistryImpl<sizebuf_t *> CRehldsHookRegistry_SV_SendResources;
@@ -316,6 +320,7 @@ public:
 	CRehldsHookRegistry_SV_ClientPrintf m_SV_ClientPrintf;
 	CRehldsHookRegistry_SV_AllowPhysent m_SV_AllowPhysent;
 	CRehldsHookRegistry_SV_SendResources m_SV_SendResources;
+	CRehldsHookRegistry_SV_TestEntityPosition m_SV_TestEntityPosition;
 
 public:
 	EXT_FUNC virtual IRehldsHookRegistry_Steam_NotifyClientConnect* Steam_NotifyClientConnect();
@@ -374,6 +379,7 @@ public:
 	EXT_FUNC virtual IRehldsHookRegistry_SV_ClientPrintf* SV_ClientPrintf();
 	EXT_FUNC virtual IRehldsHookRegistry_SV_AllowPhysent* SV_AllowPhysent();
 	EXT_FUNC virtual IRehldsHookRegistry_SV_SendResources* SV_SendResources();
+	EXT_FUNC virtual IRehldsHookRegistry_SV_TestEntityPosition* SV_TestEntityPosition();
 };
 
 extern CRehldsHookchains g_RehldsHookchains;

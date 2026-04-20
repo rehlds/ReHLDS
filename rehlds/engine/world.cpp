@@ -710,7 +710,15 @@ int SV_PointContents(const vec_t *p)
 }
 
 // Returns true if the entity is in solid currently
-edict_t *SV_TestEntityPosition(edict_t *ent)
+edict_t *EXT_FUNC SV_TestEntityPosition(edict_t *ent)
+{
+	return g_RehldsHookchains.m_SV_TestEntityPosition.callChain(
+		SV_TestEntityPosition_internal,
+		ent
+	);
+}
+
+edict_t *EXT_FUNC SV_TestEntityPosition_internal(edict_t *ent)
 {
 	qboolean monsterClip = (ent->v.flags & FL_MONSTERCLIP) ? TRUE : FALSE;
 	trace_t trace = SV_Move(ent->v.origin, ent->v.mins, ent->v.maxs, ent->v.origin, MOVE_NORMAL, ent, monsterClip);
