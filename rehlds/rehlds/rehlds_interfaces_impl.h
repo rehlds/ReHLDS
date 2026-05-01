@@ -86,6 +86,16 @@ private:
 	double m_localGameTimeBase;
 #endif
 public:
+	uint64 m_ui64MsecTime;
+	uint64 m_ullJoinTime;
+	uint64 m_ui64LastUpdateTime;
+
+	uint64 m_ullNumFrames;
+	double m_dblAvgMsec;
+	double m_dblAvgServerTime;
+
+	unsigned int m_nProcessedUsrcmdsThisVeryTick;
+public:
 	CGameClient(int id, client_t* cl);
 
 	virtual int GetId();
@@ -271,6 +281,18 @@ public:
 	void SetupLocalGameTime() { m_localGameTimeBase = g_psv.time; }
 	double GetLocalGameTime() const { return g_psv.time - m_localGameTimeBase; }
 	double GetLocalGameTimeBase() const { return m_localGameTimeBase; }
+	void SetupAnticheatDetectionVars()
+	{
+		m_ui64MsecTime = 0;
+		m_ullJoinTime = 0;
+		m_ui64LastUpdateTime = 0;
+
+		m_ullNumFrames = 0;
+		m_dblAvgMsec = 0;
+		m_dblAvgServerTime = 0;
+
+		m_nProcessedUsrcmdsThisVeryTick = 0;
+	}
 #endif
 };
 

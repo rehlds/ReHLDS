@@ -756,6 +756,22 @@ void SV_ForceFullClientsUpdate(void)
 	Netchan_FragSend(&host_client->netchan);
 }
 
+double TimeDifference(uint64_t start, uint64_t end)
+{
+	if (end > start)
+	{
+		return (end - start) / 1000.0;
+	}
+	else
+	{
+		return ((start - end) / 1000.0) * -1.0;
+	}
+}
+
+#define MAX_EX_INTERP        0.1f
+#define MIN_EX_INTERP        0.05f
+#define MAX_EX_INTERP_SPECTATOR    0.2f
+
 void SV_RunCmd(usercmd_t *ucmd, int random_seed)
 {
 	usercmd_t cmd = *ucmd;
@@ -763,12 +779,141 @@ void SV_RunCmd(usercmd_t *ucmd, int random_seed)
 	edict_t *ent;
 	trace_t trace;
 	float frametime;
+#ifdef REHLDS_FIXES
+	CGameClient* stat;
+	uint64 now;
+	double error;
+	double speedhack_ratio;
+	qboolean fPunish = false;
+#endif // REHLDS_FIXES
 
 	if (host_client->ignorecmdtime > realtime)
 	{
 		host_client->cmdtime = (double)ucmd->msec / 1000.0 + host_client->cmdtime;
 		return;
 	}
+
+#ifdef REHLDS_FIXES
+	stat = g_GameClients[host_client - g_psvs.clients];
+	now = (uint64)(realtime * 1000.0);
+
+	if (sv_rehlds_maxusrcmdprocessticks.value > 0.0f)
+	{
+		if (stat->m_nProcessedUsrcmdsThisVeryTick > (unsigned int)sv_rehlds_maxusrcmdprocessticks.value)
+		{
+			return;
+		}
+
+		stat->m_nProcessedUsrcmdsThisVeryTick++;
+	}
+
+	if (sv_rehlds_movement_block_null_commands.value > 0.0f)
+	{
+		if (ucmd->msec == 0)
+		{
+			return;
+		}
+	}
+
+	if (sv_rehlds_movement_clamp_ex_interp.value > 0.0f)
+	{
+		int maxexinterp = host_client->proxy ? MAX_EX_INTERP_SPECTATOR * 1000.0f : MAX_EX_INTERP * 1000.0f;
+
+		if (ucmd->lerp_msec < 0)
+		{
+			return;
+		}
+		if (ucmd->lerp_msec > maxexinterp)
+		{
+			return;
+		}
+	}
+
+	if (sv_rehlds_movement_number_of_samples.value > 0.0f)
+	{
+		// Update vars in case the player just connected.
+		if (stat->m_ui64MsecTime == 0)
+		{
+			stat->m_ui64MsecTime = now;
+		}
+		if (stat->m_ullJoinTime == 0)
+		{
+			stat->m_ullJoinTime = now;
+		}
+		if (stat->m_ui64LastUpdateTime == 0)
+		{
+			stat->m_ui64LastUpdateTime = now;
+		}
+
+		stat->m_ui64MsecTime += ucmd->msec;
+
+		// Gain info...
+		if (stat->m_ullNumFrames < (uint64)sv_rehlds_movement_number_of_samples.value)
+		{
+			stat->m_dblAvgMsec += ucmd->msec;
+			stat->m_dblAvgServerTime += (now - stat->m_ui64LastUpdateTime);
+			stat->m_ullNumFrames++;
+		}
+		else
+		{
+			stat->m_dblAvgMsec /= (uint64)sv_rehlds_movement_number_of_samples.value;
+			stat->m_dblAvgServerTime /= (uint64)sv_rehlds_movement_number_of_samples.value;
+			stat->m_ullNumFrames = 0;
+		}
+
+		stat->m_ui64LastUpdateTime = now;
+
+		error = TimeDifference(now, stat->m_ui64MsecTime) * 1000.0;
+
+		speedhack_ratio = 0.f;
+		if (stat->m_dblAvgMsec != 0.f && stat->m_dblAvgServerTime != 0.f)
+			speedhack_ratio = stat->m_dblAvgMsec / stat->m_dblAvgServerTime;
+
+		if (error > sv_rehlds_movement_max_error_msec.value)
+		{
+			if (speedhack_ratio > sv_rehlds_movement_max_timescale.value)
+			{
+				// Don't process commands when the player is speeding time up
+				fPunish = true;
+			}
+		}
+		else if (error < -sv_rehlds_movement_max_error_msec.value)
+		{
+			// Don't let them overcharge
+			if (error < -(sv_rehlds_movement_max_error_msec.value * 2.0f))
+			{
+				stat->m_ui64MsecTime = now;
+			}
+
+			if (speedhack_ratio < sv_rehlds_movement_min_timescale.value)
+			{
+				// Don't process commands when the player is slowing time down
+				fPunish = true;
+			}
+		}
+
+		if (fPunish)
+		{
+			// Don't count this command in
+			stat->m_ui64MsecTime -= ucmd->msec;
+
+			if (sv_rehlds_movement_speedhack_punish.value == 0.0f)
+			{
+				Con_DPrintf("%s Kicked for speedhacking (%.1f)\n", host_client->name, speedhack_ratio);
+				SV_DropClient(host_client, false, "Kicked for speedhacking");
+			}
+			else if (sv_rehlds_movement_speedhack_punish.value > 0.0f)
+			{
+				Con_DPrintf("%s Banned for speedhacking (%.1f)\n", host_client->name, speedhack_ratio);
+				Cbuf_AddText(va("addip %.1f %s\n", sv_rehlds_movement_speedhack_punish.value, NET_BaseAdrToString(host_client->netchan.remote_address)));
+				SV_DropClient(host_client, false, "Banned for speedhacking");
+			}
+			
+			// Don't let the engine process the command.
+			return;
+		}
+	}
+#endif //REHLDS_FIXES
 
 
 	host_client->ignorecmdtime = 0;
