@@ -92,6 +92,14 @@ This means that plugins that do binary code analysis (Orpheu for example) probab
 <li>sv_net_incoming_decompression_punish // Time in minutes for which the player will be banned for malformed/abnormal bzip2 fragments (0 - Permanent, use a negative number for a kick). Default: -1
 <li>sv_tags &lt;comma-delimited string list of tags&gt; // Sets a string defining the "gametags" for this server, this is optional, but if it is set it allows users/scripts to filter in the matchmaking/server-browser interfaces based on the value. Default: ""
 <li>sv_filterban &lt;-1|0|1&gt;// Set packet filtering by IP mode. -1 - All players will be rejected without any exceptions. 0 - No checks will happen. 1 - All incoming players will be checked if they're IP banned (if they have an IP filter entry), if they are, they will be kicked. Default: 1
+<li>sv_rehlds_maxusrcmdprocessticks // Set maximum amount of movement commands the server is able to process from a single player in a single frame. This includes the commands itself, not packets. Default: 24
+<li>sv_rehlds_movement_block_null_commands &lt;1|0&gt; // Defines whether should the server block movement commands with zero time duration. Not recommended for usage unless absolutely needed, may break clients with high FPS. Default: 0
+<li>sv_rehlds_movement_clamp_ex_interp &lt;1|0&gt; // Defines whether should the server block movement commands with invalid (out of range) "ex_interp" value. Default: 1
+<li>sv_rehlds_movement_number_of_samples // Defines the number of frames the server takes to decide whether a player is speedhacking or no. Higher - more accurate but slower detection, lower - vice versa. Default: 120
+<li>sv_rehlds_movement_max_error_msec // Defines how far a client's internal game clock can go before/ahead the server's clock in MS. Adds a penalty upon exceeding\failing, but only if also going beyond\earlier "sv_rehlds_movement_max_timescale"\"sv_rehlds_movement_min_timescale". Default: 300
+<li>sv_rehlds_movement_max_timescale // Defines the max client's base game speed. Clients speeding the game up within this value won't have penalties unless exceeding this. Movements will apply upon exceeding this value. Default: 3.0
+<li>sv_rehlds_movement_min_timescale // Defines the min client's base game speed. Clients slowing the game down until this value won't have penalties unless going even lower than this. Penalties will apply going lower this value. Default: 0.5
+<li>sv_rehlds_movement_speedhack_punish // Time in minutes for which the player will be banned for speedhacking (0 - Kick, use a negative number for freezing the player). Default: -1
 </ul>
 </details>
 
