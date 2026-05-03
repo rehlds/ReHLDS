@@ -90,7 +90,6 @@ qboolean SV_PlayerRunThink(edict_t *ent, float frametime, double clienttimebase)
 void SV_CheckMovingGround(edict_t *player, float frametime);
 void SV_ConvertPMTrace(trace_t *dest, pmtrace_t *src, edict_t *ent);
 void SV_ForceFullClientsUpdate(void);
-void SV_RunCmd(usercmd_t *ucmd, int random_seed);
 int SV_ValidateClientCommand(char *pszCommand);
 float SV_CalcClientTime(client_t *cl);
 void SV_ComputeLatency(client_t *cl);
@@ -114,3 +113,9 @@ qboolean SV_SetPlayer(int idnum);
 void SV_ShowServerinfo_f(void);
 void SV_SendEnts_f(void);
 void SV_FullUpdate_f(void);
+
+#ifdef REHLDS_FIXES
+void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fChopped = FALSE);
+#else // !REHLDS_FIXES
+void SV_RunCmd(usercmd_t* ucmd, int random_seed);
+#endif // REHLDS_FIXES

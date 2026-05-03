@@ -772,7 +772,11 @@ double TimeDifference(uint64_t start, uint64_t end)
 #define MIN_EX_INTERP        0.05f
 #define MAX_EX_INTERP_SPECTATOR    0.2f
 
+#ifdef REHLDS_FIXES
+void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fChopped /* = FALSE */)
+#else // !REHLDS_FIXES
 void SV_RunCmd(usercmd_t *ucmd, int random_seed)
+#endif // REHLDS_FIXES
 {
 	usercmd_t cmd = *ucmd;
 	int i;
@@ -829,7 +833,8 @@ void SV_RunCmd(usercmd_t *ucmd, int random_seed)
 		}
 	}
 
-	if (sv_rehlds_movement_number_of_samples.value > 0.0f)
+	if (sv_rehlds_movement_number_of_samples.value > 0.0f
+		&& !fChopped)	// Don't count in chopped commands as we have processed the actual main command allready
 	{
 		// Update vars in case the player just connected.
 		if (stat->m_ui64MsecTime == 0)
@@ -920,10 +925,10 @@ void SV_RunCmd(usercmd_t *ucmd, int random_seed)
 	if (cmd.msec > 50)
 	{
 		cmd.msec = (byte)(ucmd->msec / 2.0);
-		SV_RunCmd(&cmd, random_seed);
+		SV_RunCmd(&cmd, random_seed, TRUE);
 		cmd.msec = (byte)(ucmd->msec / 2.0);
 		cmd.impulse = 0;
-		SV_RunCmd(&cmd, random_seed);
+		SV_RunCmd(&cmd, random_seed, TRUE);
 		return;
 	}
 
