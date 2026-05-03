@@ -113,9 +113,4 @@ qboolean SV_SetPlayer(int idnum);
 void SV_ShowServerinfo_f(void);
 void SV_SendEnts_f(void);
 void SV_FullUpdate_f(void);
-
-#ifdef REHLDS_FIXES
-void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fChopped = FALSE);
-#else // !REHLDS_FIXES
-void SV_RunCmd(usercmd_t* ucmd, int random_seed);
-#endif // REHLDS_FIXES
+void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fChopped = FALSE, qboolean fNetCmd = FALSE);

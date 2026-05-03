@@ -772,11 +772,7 @@ double TimeDifference(uint64_t start, uint64_t end)
 #define MIN_EX_INTERP        0.05f
 #define MAX_EX_INTERP_SPECTATOR    0.2f
 
-#ifdef REHLDS_FIXES
-void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fChopped /* = FALSE */)
-#else // !REHLDS_FIXES
-void SV_RunCmd(usercmd_t *ucmd, int random_seed)
-#endif // REHLDS_FIXES
+void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fChopped /* = FALSE */, qboolean fNetCmd /* = FALSE */)
 {
 	usercmd_t cmd = *ucmd;
 	int i;
@@ -801,7 +797,8 @@ void SV_RunCmd(usercmd_t *ucmd, int random_seed)
 	stat = g_GameClients[host_client - g_psvs.clients];
 	now = (uint64)(realtime * 1000.0);
 
-	if (sv_rehlds_maxusrcmdprocessticks.value > 0.0f)
+	if (sv_rehlds_maxusrcmdprocessticks.value > 0.0f
+		&& !fNetCmd)	// allow pfnRunPlayerMove to overrun this cap
 	{
 		if (stat->m_nProcessedUsrcmdsThisVeryTick > (unsigned int)sv_rehlds_maxusrcmdprocessticks.value)
 		{
@@ -811,7 +808,8 @@ void SV_RunCmd(usercmd_t *ucmd, int random_seed)
 		stat->m_nProcessedUsrcmdsThisVeryTick++;
 	}
 
-	if (sv_rehlds_movement_block_null_commands.value > 0.0f)
+	if (sv_rehlds_movement_block_null_commands.value > 0.0f
+		&& !fNetCmd)
 	{
 		if (ucmd->msec == 0)
 		{
@@ -819,7 +817,8 @@ void SV_RunCmd(usercmd_t *ucmd, int random_seed)
 		}
 	}
 
-	if (sv_rehlds_movement_clamp_ex_interp.value > 0.0f)
+	if (sv_rehlds_movement_clamp_ex_interp.value > 0.0f
+		&& !fNetCmd)
 	{
 		int maxexinterp = host_client->proxy ? MAX_EX_INTERP_SPECTATOR * 1000.0f : MAX_EX_INTERP * 1000.0f;
 
@@ -834,7 +833,8 @@ void SV_RunCmd(usercmd_t *ucmd, int random_seed)
 	}
 
 	if (sv_rehlds_movement_number_of_samples.value > 0.0f
-		&& !fChopped)	// Don't count in chopped commands as we have processed the actual main command allready
+		&& !fChopped	// Don't count in chopped commands as we have processed the actual main command allready
+		&& !fNetCmd)	// Commands given to us via pfnRunPlayerMove must not be affected by our checks.
 	{
 		// Update vars in case the player just connected.
 		if (stat->m_ui64MsecTime == 0)
