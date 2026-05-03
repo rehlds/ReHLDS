@@ -8141,7 +8141,9 @@ void EXT_FUNC SV_Frame_Internal()
 	gGlobalVariables.frametime = host_frametime;
 	g_psv.oldtime = g_psv.time;
 	SV_CheckCmdTimes();
+#ifdef REHLDS_FIXES
 	SV_ResetProcessedUsrcmdTicks();
+#endif // REHLDS_FIXES
 	SV_ReadPackets();
 	if (SV_IsSimulating())
 	{
