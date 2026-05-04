@@ -375,14 +375,6 @@ extern cvar_t sv_rehlds_local_gametime;
 extern cvar_t sv_rehlds_send_mapcycle;
 extern cvar_t sv_usercmd_custom_random_seed;
 extern cvar_t sv_rehlds_allow_large_sprays;
-extern cvar_t sv_rehlds_maxusrcmdprocessticks;
-extern cvar_t sv_rehlds_movement_block_null_commands;
-extern cvar_t sv_rehlds_movement_clamp_ex_interp;
-extern cvar_t sv_rehlds_movement_number_of_samples;
-extern cvar_t sv_rehlds_movement_max_error_msec;
-extern cvar_t sv_rehlds_movement_max_timescale;
-extern cvar_t sv_rehlds_movement_min_timescale;
-extern cvar_t sv_rehlds_movement_speedhack_punish;
 #endif
 extern int sv_playermodel;
 
