@@ -659,7 +659,7 @@ qboolean Netchan_Validate(netchan_t *chan, qboolean *frag_message, unsigned int 
 		// total fragments should be <= MAX_FRAGMENTS and current fragment can't be > total fragments
 		if (i == FRAG_NORMAL_STREAM && FRAG_GETCOUNT(fragid[i]) > MAX_NORMAL_FRAGMENTS)
 			return FALSE;
-		if (i == FRAG_FILE_STREAM && FRAG_GETCOUNT(fragid[i]) > MAX_FILE_FRAGMENTS)
+		if (i == FRAG_FILE_STREAM && (!sv_allow_upload.value || FRAG_GETCOUNT(fragid[i]) > MAX_FILE_FRAGMENTS))
 			return FALSE;
 		if (FRAG_GETID(fragid[i]) > FRAG_GETCOUNT(fragid[i]))
 			return FALSE;
