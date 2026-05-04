@@ -756,7 +756,19 @@ void SV_ForceFullClientsUpdate(void)
 	Netchan_FragSend(&host_client->netchan);
 }
 
-void SV_RunCmd(usercmd_t *ucmd, int random_seed)
+double TimeDifference(uint64_t start, uint64_t end)
+{
+	if (end > start)
+	{
+		return (end - start) / 1000.0;
+	}
+	else
+	{
+		return ((start - end) / 1000.0) * -1.0;
+	}
+}
+
+void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fNetCmd, qboolean fChopped)
 {
 	usercmd_t cmd = *ucmd;
 	int i;
@@ -772,16 +784,26 @@ void SV_RunCmd(usercmd_t *ucmd, int random_seed)
 
 
 	host_client->ignorecmdtime = 0;
+
+#ifdef REHLDS_FIXES
+	if (fNetCmd			// analyze network packets only
+		&& !fChopped
+		&& !host_client->fakeclient)
+	{
+		if (g_UserCmdTimeLimiter.CheckLimits(host_client - g_psvs.clients, ucmd))
+			return;
+	}
+#endif // REHLDS_FIXES
+
 	if (cmd.msec > 50)
 	{
 		cmd.msec = (byte)(ucmd->msec / 2.0);
-		SV_RunCmd(&cmd, random_seed);
+		SV_RunCmd(&cmd, random_seed, fNetCmd, TRUE);
 		cmd.msec = (byte)(ucmd->msec / 2.0);
 		cmd.impulse = 0;
-		SV_RunCmd(&cmd, random_seed);
+		SV_RunCmd(&cmd, random_seed, fNetCmd, TRUE);
 		return;
 	}
-
 
 	if (!host_client->fakeclient)
 		SV_SetupMove(host_client);
@@ -1690,13 +1712,13 @@ void SV_ParseMove(client_t *pSenderClient)
 	{
 		while (net_drop > numbackup)
 		{
-			SV_RunCmd(&host_client->lastcmd, 0);
+			SV_RunCmd(&host_client->lastcmd, 0, FALSE);
 			net_drop--;
 		}
 
 		while (net_drop > 0)
 		{
-			SV_RunCmd(&cmds[numcmds + net_drop - 1], host_client->netchan.incoming_sequence - (numcmds + net_drop - 1));
+			SV_RunCmd(&cmds[numcmds + net_drop - 1], host_client->netchan.incoming_sequence - (numcmds + net_drop - 1), TRUE);
 			net_drop--;
 		}
 
@@ -1704,7 +1726,7 @@ void SV_ParseMove(client_t *pSenderClient)
 
 	for (int i = numcmds - 1; i >= 0; i--)
 	{
-		SV_RunCmd(&cmds[i], host_client->netchan.incoming_sequence - i);
+		SV_RunCmd(&cmds[i], host_client->netchan.incoming_sequence - i, TRUE);
 	}
 
 #ifdef REHLDS_FIXES

@@ -2061,7 +2061,7 @@ void EXT_FUNC PF_RunPlayerMove_I(edict_t *fakeclient, const float *viewangles, f
 	cmd.msec = msec;
 
 	SV_PreRunCmd();
-	SV_RunCmd(&cmd, 0);
+	SV_RunCmd(&cmd, 0, FALSE);
 	Q_memcpy(&host_client->lastcmd, &cmd, sizeof(host_client->lastcmd));
 
 	sv_player = oldclient;

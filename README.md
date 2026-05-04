@@ -92,6 +92,15 @@ This means that plugins that do binary code analysis (Orpheu for example) probab
 <li>sv_net_incoming_decompression_punish // Time in minutes for which the player will be banned for malformed/abnormal bzip2 fragments (0 - Permanent, use a negative number for a kick). Default: -1
 <li>sv_tags &lt;comma-delimited string list of tags&gt; // Sets a string defining the "gametags" for this server, this is optional, but if it is set it allows users/scripts to filter in the matchmaking/server-browser interfaces based on the value. Default: ""
 <li>sv_filterban &lt;-1|0|1&gt;// Set packet filtering by IP mode. -1 - All players will be rejected without any exceptions. 0 - No checks will happen. 1 - All incoming players will be checked if they're IP banned (if they have an IP filter entry), if they are, they will be kicked. Default: 1
+<li>sv_rehlds_movecmd_max_ticks // Set maximum amount of movement commands the server is able to process from a single player in a single frame. This includes the commands itself, not packets. Default: 24
+<li>sv_rehlds_movecmd_max_null_streak // Defines the maximum allowed consecutive movement commands with zero time duration (empty commands). 0 - disables the check. Default: 0
+<li>sv_rehlds_movecmd_clamp_interp &lt;1|0&gt; // Defines whether should the server block movement commands with invalid (out of range) "ex_interp" value. Default: 1
+<li>sv_rehlds_movecmdtime_samples // Defines the number of frames the server takes to average the client's movement speed. Higher - more accurate but slower detection, lower - vice versa. Default: 120
+<li>sv_rehlds_movecmdtime_max_error // Defines how far a client's internal game clock can go ahead of or behind the server's clock in milliseconds. If this limit is exceeded, the server evaluates the client's game speed. Penalties are ONLY applied if the client also violates the "sv_rehlds_movecmdtime_max_scale" or "sv_rehlds_movecmdtime_min_scale" limits. Default: 300
+<li>sv_rehlds_movecmdtime_max_scale // Defines the max client's base game speed ratio. Clients speeding the game up beyond this multiplier will receive warnings. Default: 3.0
+<li>sv_rehlds_movecmdtime_min_scale // Defines the min client's base game speed ratio. Clients slowing the game down below this multiplier will receive warnings. Default: 0.5
+<li>sv_rehlds_movecmdtime_max_warnings // Maximum allowed speedhack/slowmo warnings before the punishment is applied. -1 - disable detection. Default: -1
+<li>sv_rehlds_movecmdtime_punish // Time in minutes for which the player will be banned for speedhacking/slowing (-1 - Kick, 0 - Permanent, use a negative number for a kick). Default: -1
 </ul>
 </details>
 
