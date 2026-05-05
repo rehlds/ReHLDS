@@ -1472,7 +1472,12 @@ void SV_WriteSpawn(sizebuf_t *msg)
 	MSG_WriteByte(msg, svc_signonnum);
 	MSG_WriteByte(msg, 1);
 
+#ifdef REHLDS_FIXES
+	host_client->connecttime = realtime;
+#else
 	host_client->connecttime = 0.0;
+#endif
+
 	host_client->ignorecmdtime = 0.0;
 	host_client->cmdtime = 0.0;
 	host_client->active = TRUE;
