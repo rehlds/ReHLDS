@@ -764,7 +764,7 @@ hull_t *SV_HullForStudioModel(const edict_t *pEdict, const vec_t *mins, const ve
 	if (pEdict->v.gamestate == 1 && (g_eGameType == GT_TerrorStrike || g_eGameType == GT_CStrike || g_eGameType == GT_CZero))
 		bSkipShield = 1;
 
-	if ((g_psv.models[pEdict->v.modelindex]->flags & FL_ONGROUND) || useComplexHull == TRUE)
+	if ((g_psv.models[pEdict->v.modelindex]->flags & STUDIO_TRACE_HITBOX) || useComplexHull == TRUE)
 	{
 		VectorScale(size, factor, size);
 		offset[0] = 0;

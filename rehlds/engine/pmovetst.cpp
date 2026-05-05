@@ -83,7 +83,7 @@ void PM_InitBoxHull(void)
 	{
 		int side = i & 1;
 		box_clipnodes_0[i].planenum = i;
-		box_clipnodes_0[i].children[side] = -1;
+		box_clipnodes_0[i].children[side] = CONTENTS_EMPTY;
 		box_clipnodes_0[i].children[side ^ 1] = (i != 5) ? i + 1 : CONTENTS_SOLID;
 		box_planes_0[i].type = i >> 1;
 		box_planes_0[i].normal[i >> 1] = 1.0f;
@@ -108,7 +108,7 @@ int EXT_FUNC PM_HullPointContents(hull_t *hull, int num, vec_t *p)
 	mplane_t *plane;
 
 	if (hull->firstclipnode >= hull->lastclipnode)
-		return -1;
+		return CONTENTS_EMPTY;
 
 	while (num >= 0)
 	{
@@ -145,14 +145,14 @@ int PM_LinkContents(vec_t *p, int *pIndex)
 		test[0] = p[0] - pe->origin[0];
 		test[1] = p[1] - pe->origin[1];
 		test[2] = p[2] - pe->origin[2];
-		if (PM_HullPointContents(model->hulls, model->hulls[0].firstclipnode, test) != -1) {
+		if (PM_HullPointContents(model->hulls, model->hulls[point_hull].firstclipnode, test) != CONTENTS_EMPTY) {
 			if (pIndex)
 				*pIndex = pe->info;
 			return pe->skin;
 		}
 	}
 
-	return -1;
+	return CONTENTS_EMPTY;
 }
 
 int EXT_FUNC PM_PointContents(vec_t *p, int *truecontents)
@@ -165,27 +165,27 @@ int EXT_FUNC PM_PointContents(vec_t *p, int *truecontents)
 	{
 		int entityContents = PM_HullPointContents(
 			pmove->physents[0].model->hulls,
-			pmove->physents[0].model->hulls[0].firstclipnode,
+			pmove->physents[0].model->hulls[point_hull].firstclipnode,
 			p);
 		if (truecontents)
 			*truecontents = entityContents;
-		if (entityContents > -9 || entityContents < -14)
+		if (entityContents > CONTENTS_CURRENT_0 || entityContents < CONTENTS_CURRENT_DOWN)
 		{
-			if (entityContents == -2)
+			if (entityContents == CONTENTS_SOLID)
 				return entityContents;
 		}
 		else
 		{
-			entityContents = -3;
+			entityContents = CONTENTS_WATER;
 		}
 		int cont = PM_LinkContents(p, 0);
-		if (cont != -1)
+		if (cont != CONTENTS_EMPTY)
 			return cont;
 		return entityContents;
 	}
 	if (truecontents)
-		*truecontents = -1;
-	return -2;
+		*truecontents = CONTENTS_EMPTY;
+	return CONTENTS_SOLID;
 }
 
 int PM_WaterEntity(vec_t *p)
@@ -198,9 +198,9 @@ int PM_WaterEntity(vec_t *p)
 #endif
 
 	model_t* model = pmove->physents[0].model;
-	cont = PM_HullPointContents(model->hulls, model->hulls[0].firstclipnode, p);
-	if (cont == -2) {
-		return -1;
+	cont = PM_HullPointContents(model->hulls, model->hulls[point_hull].firstclipnode, p);
+	if (cont == CONTENTS_SOLID) {
+		return CONTENTS_EMPTY;
 	}
 
 	entityIndex = 0;
@@ -210,9 +210,9 @@ int PM_WaterEntity(vec_t *p)
 int EXT_FUNC PM_TruePointContents(vec_t *p)
 {
 	if ((int)pmove->physents[0].model == -208)
-		return -1;
+		return CONTENTS_EMPTY;
 	else
-		return PM_HullPointContents(pmove->physents[0].model->hulls, pmove->physents[0].model->hulls[0].firstclipnode, p);
+		return PM_HullPointContents(pmove->physents[0].model->hulls, pmove->physents[0].model->hulls[point_hull].firstclipnode, p);
 }
 
 hull_t *PM_HullForStudioModel(model_t *pModel, vec_t *offset, float frame, int sequence, const vec_t *angles, const vec_t *origin, const unsigned char *pcontroller, const unsigned char *pblending, int *pNumHulls)
@@ -235,19 +235,19 @@ hull_t* EXT_FUNC PM_HullForBsp(physent_t *pe, vec_t *offset)
 
 	switch (pmove->usehull) {
 	case 1:
-		hull = &pe->model->hulls[3];
+		hull = &pe->model->hulls[head_hull];
 		break;
 
 	case 2:
-		hull = &pe->model->hulls[0];
+		hull = &pe->model->hulls[point_hull];
 		break;
 
 	case 3:
-		hull = &pe->model->hulls[2];
+		hull = &pe->model->hulls[large_hull];
 		break;
 
 	default:
-		hull = &pe->model->hulls[1];
+		hull = &pe->model->hulls[human_hull];
 		break;
 	}
 
@@ -405,16 +405,16 @@ pmtrace_t _PM_PlayerTrace(vec_t *start, vec_t *end, int traceFlags, int numphyse
 			switch (pmove->usehull)
 			{
 			case 1:
-				hull = &pe->model->hulls[3];
+				hull = &pe->model->hulls[head_hull];
 				break;
 			case 2:
-				hull = &pe->model->hulls[0];
+				hull = &pe->model->hulls[point_hull];
 				break;
 			case 3:
-				hull = &pe->model->hulls[2];
+				hull = &pe->model->hulls[large_hull];
 				break;
 			default:
-				hull = &pe->model->hulls[1];
+				hull = &pe->model->hulls[human_hull];
 				break;
 			}
 			offset[0] = hull->clip_mins[0] - player_mins[pmove->usehull][0];
@@ -578,9 +578,9 @@ struct pmtrace_s* EXT_FUNC PM_TraceLine(float *start, float *end, int flags, int
 
 	oldhull = pmove->usehull;
 	pmove->usehull = usehull;
-	if (flags)
+	if (flags != PM_TRACELINE_PHYSENTSONLY)
 	{
-		if (flags == 1)
+		if (flags == PM_TRACELINE_ANYVISIBLE)
 			tr = _PM_PlayerTrace(start, end, PM_NORMAL, pmove->numvisent, pmove->visents, ignore_pe, NULL);
 	}
 	else
@@ -598,7 +598,7 @@ struct pmtrace_s* EXT_FUNC PM_TraceLineEx(float *start, float *end, int flags, i
 
 	oldhull = pmove->usehull;
 	pmove->usehull = usehull;
-	if (flags)
+	if (flags != PM_TRACELINE_PHYSENTSONLY)
 	{
 		tr = _PM_PlayerTrace(start, end, PM_NORMAL, pmove->numvisent, pmove->visents, -1, pfnIgnore);
 	}
@@ -700,7 +700,7 @@ qboolean PM_RecursiveHullCheck(hull_t *hull, int num, float p1f, float p2f, cons
 	if (!PM_RecursiveHullCheck(hull, node->children[side], p1f, frac, p1, mid, trace))
 		return 0;
 
-	if (PM_HullPointContents(hull, node->children[side ^ 1], mid) != -2)
+	if (PM_HullPointContents(hull, node->children[side ^ 1], mid) != CONTENTS_SOLID)
 		return PM_RecursiveHullCheck(hull, node->children[side ^ 1], frac, p2f, mid, p2, trace);
 
 	if (trace->allsolid)
@@ -721,7 +721,7 @@ qboolean PM_RecursiveHullCheck(hull_t *hull, int num, float p1f, float p2f, cons
 		trace->plane.dist = plane->dist;
 	}
 
-	if (PM_HullPointContents(hull, hull->firstclipnode, mid) != -2)
+	if (PM_HullPointContents(hull, hull->firstclipnode, mid) != CONTENTS_SOLID)
 	{
 		trace->fraction = frac;
 		trace->endpos[0] = mid[0];
@@ -740,7 +740,7 @@ qboolean PM_RecursiveHullCheck(hull_t *hull, int num, float p1f, float p2f, cons
 		mid[0] = (p2[0] - p1[0]) * midf + p1[0];
 		mid[1] = (p2[1] - p1[1]) * midf + p1[1];
 		mid[2] = (p2[2] - p1[2]) * midf + p1[2];
-		if (PM_HullPointContents(hull, hull->firstclipnode, mid) != -2)
+		if (PM_HullPointContents(hull, hull->firstclipnode, mid) != CONTENTS_SOLID)
 		{
 			trace->fraction = frac;
 			trace->endpos[0] = mid[0];
@@ -858,7 +858,7 @@ qboolean PM_RecursiveHullCheck(hull_t *hull, int num, float p1f, float p2f, cons
 		if (!PM_RecursiveHullCheck(hull, node->children[side], p1f, frac, p1, mid, trace))
 			return 0;
 
-		if (PM_HullPointContents(hull, node->children[side ^ 1], mid) != -2)
+		if (PM_HullPointContents(hull, node->children[side ^ 1], mid) != CONTENTS_SOLID)
 		{
 			num = node->children[side ^ 1];
 			p1f = frac;
@@ -887,7 +887,7 @@ qboolean PM_RecursiveHullCheck(hull_t *hull, int num, float p1f, float p2f, cons
 			trace->plane.dist = plane->dist;
 		}
 
-		if (PM_HullPointContents(hull, hull->firstclipnode, mid) != -2)
+		if (PM_HullPointContents(hull, hull->firstclipnode, mid) != CONTENTS_SOLID)
 		{
 			trace->fraction = frac;
 			trace->endpos[0] = mid[0];
@@ -906,7 +906,7 @@ qboolean PM_RecursiveHullCheck(hull_t *hull, int num, float p1f, float p2f, cons
 			mid[0] = (p2[0] - p1[0]) * midf + p1[0];
 			mid[1] = (p2[1] - p1[1]) * midf + p1[1];
 			mid[2] = (p2[2] - p1[2]) * midf + p1[2];
-			if (PM_HullPointContents(hull, hull->firstclipnode, mid) != -2)
+			if (PM_HullPointContents(hull, hull->firstclipnode, mid) != CONTENTS_SOLID)
 			{
 				trace->fraction = frac;
 				trace->endpos[0] = mid[0];
