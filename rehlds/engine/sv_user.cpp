@@ -795,6 +795,9 @@ void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fNetCmd, qboolean fCho
 	}
 #endif // REHLDS_FIXES
 
+	if (!host_client->edict || !host_client->connected)
+		return;
+
 	if (cmd.msec > 50)
 	{
 		cmd.msec = (byte)(ucmd->msec / 2.0);
@@ -849,6 +852,10 @@ void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fNetCmd, qboolean fCho
 	}
 	SV_PlayerRunPreThink(sv_player, (float)host_client->svtimebase);
 	SV_PlayerRunThink(sv_player, frametime, host_client->svtimebase);
+
+	if (!host_client->edict)
+		return;
+
 	if (Length(sv_player->v.basevelocity) > 0.0)
 	{
 		sv_player->v.clbasevelocity[0] = sv_player->v.basevelocity[0];
@@ -961,6 +968,9 @@ void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fNetCmd, qboolean fCho
 	// Determine whether movevars has changed or not
 	if (!host_client->fakeclient && Q_memcmp(&movevars, pmove->movevars, sizeof(movevars)) != 0)
 		SV_WriteMovevarsToClient(&host_client->netchan.message, pmove->movevars); // sync movevars for the client
+
+	if (!host_client->edict)
+		return;
 
 	sv_player->v.deadflag = pmove->deadflag;
 	sv_player->v.effects = pmove->effects;
@@ -1076,10 +1086,13 @@ void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fNetCmd, qboolean fCho
 	gGlobalVariables.time = (float)host_client->svtimebase;
 	gGlobalVariables.frametime = frametime;
 	gEntityInterface.pfnPlayerPostThink(sv_player);
-	if (host_client->edict)
-		gEntityInterface.pfnCmdEnd(sv_player);
 
-	if (host_client->edict && !host_client->fakeclient)
+	if (!host_client->edict)
+		return;
+
+	gEntityInterface.pfnCmdEnd(sv_player);
+
+	if (!host_client->fakeclient)
 		SV_RestoreMove(host_client);
 }
 
