@@ -1076,9 +1076,10 @@ void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fNetCmd, qboolean fCho
 	gGlobalVariables.time = (float)host_client->svtimebase;
 	gGlobalVariables.frametime = frametime;
 	gEntityInterface.pfnPlayerPostThink(sv_player);
-	gEntityInterface.pfnCmdEnd(sv_player);
+	if (host_client->edict)
+		gEntityInterface.pfnCmdEnd(sv_player);
 
-	if (!host_client->fakeclient)
+	if (host_client->edict && !host_client->fakeclient)
 		SV_RestoreMove(host_client);
 }
 
