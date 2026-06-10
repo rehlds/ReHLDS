@@ -168,7 +168,7 @@ void CStringCommandsRateLimiter::CheckBurstRate(unsigned int clientId) {
 
 void CStringCommandsRateLimiter::CheckAverageRate(unsigned int clientId) {
 	client_t* cl = &g_psvs.clients[clientId];
-	if (!cl->active || sv_rehlds_movecmdrate_max_avg.value <= 0.0f) {
+	if (!cl->active || sv_rehlds_stringcmdrate_max_avg.value <= 0.0f) {
 		return;
 	}
 
