@@ -168,7 +168,7 @@ void CStringCommandsRateLimiter::CheckBurstRate(unsigned int clientId) {
 
 void CStringCommandsRateLimiter::CheckAverageRate(unsigned int clientId) {
 	client_t* cl = &g_psvs.clients[clientId];
-	if (!cl->active || sv_rehlds_movecmdrate_max_avg.value <= 0.0f) {
+	if (!cl->active || sv_rehlds_stringcmdrate_max_avg.value <= 0.0f) {
 		return;
 	}
 
@@ -224,9 +224,9 @@ bool CUserCmdTimeLimiter::CheckLimits(unsigned int clientId, usercmd_t *ucmd)
 	// check move command flood within a single server tick
 	if (sv_rehlds_movecmd_max_ticks.value > 0)
 	{
-		if (ust->ticksThisFrame > (unsigned int)sv_rehlds_movecmd_max_ticks.value) {
-			return true;
-		}
+        if (ust->ticksThisFrame >= (unsigned int)sv_rehlds_movecmd_max_ticks.value) {
+            return true;
+        }
 
 		ust->ticksThisFrame++;
 	}
