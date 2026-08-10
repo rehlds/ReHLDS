@@ -173,6 +173,9 @@
     <ClCompile Include="..\unittests\common_tests.cpp">
       <Filter>unittests</Filter>
     </ClCompile>
+    <ClCompile Include="..\unittests\download_tests.cpp">
+      <Filter>unittests</Filter>
+    </ClCompile>
     <ClCompile Include="..\engine\net_ws.cpp">
       <Filter>engine\common</Filter>
     </ClCompile>

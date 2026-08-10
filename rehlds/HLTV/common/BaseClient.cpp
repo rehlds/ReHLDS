@@ -316,7 +316,31 @@ void BaseClient::CMD_DropClient(TokenLine *cmd)
 
 void BaseClient::CMD_DownloadFile(TokenLine *cmd)
 {
-	DownloadFile(cmd->GetToken(1));
+	// GetRestOfLine(1) starts at token 1, not after it
+	char *rest = cmd->GetRestOfLine(1);
+	if (!rest)
+		return;
+
+	char fileName[MAX_PATH];
+
+	size_t len = 0;
+	while (rest[len])
+	{
+		if (++len >= sizeof(fileName))
+			return;	// no legitimate resource path is this long
+	}
+
+	// The full line keeps a quoted token's closing quote
+	while (len > 0 && ((unsigned char)rest[len - 1] <= ' ' || rest[len - 1] == '\"'))
+		len--;
+
+	if (len == 0)
+		return;
+
+	Q_memcpy(fileName, rest, len);
+	fileName[len] = '\0';
+
+	DownloadFile(fileName);
 }
 
 void BaseClient::CMD_SetInfo(TokenLine *cmd)

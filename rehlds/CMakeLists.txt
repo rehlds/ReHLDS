@@ -190,6 +190,7 @@ set(UNITTESTS_SRCS
 	unittests/common_tests.cpp
 	unittests/crc32c_tests.cpp
 	unittests/delta_tests.cpp
+	unittests/download_tests.cpp
 	unittests/info_tests.cpp
 	unittests/mathlib_tests.cpp
 	unittests/rehlds_tests_shared.cpp

@@ -564,6 +564,9 @@ int SV_ModelIndex(const char *name);
 void SV_AddResource(resourcetype_t type, const char *name, int size, unsigned char flags, int index);
 void SV_AddResource_internal(resourcetype_t type, const char *name, int size, unsigned char flags, int index);
 size_t SV_CountResourceByType(resourcetype_t type, resource_t **pResourceList = nullptr, size_t nListMax = 0, size_t *nWidthFileNameMax = nullptr);
+#ifdef REHLDS_FIXES
+char *SV_TrimResourceLine(char *line);
+#endif
 void SV_CreateGenericResources(void);
 void SV_CreateResourceList(void);
 void SV_ClearCaches(void);
@@ -602,6 +605,9 @@ void SV_InactivateClients(void);
 void SV_FailDownload(const char *filename);
 const char *Q_stristr(const char *pStr, const char *pSearch);
 qboolean IsSafeFileToDownload(const char *filename);
+#ifdef REHLDS_FIXES
+const char *SV_GetRequestedDownloadName(char *out, size_t outSize);
+#endif
 void SV_BeginFileDownload_f(void);
 void SV_SetMaxclients(void);
 void SV_HandleRconPacket(void);

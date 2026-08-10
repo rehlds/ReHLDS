@@ -5555,6 +5555,39 @@ void PrecacheMapSpecifiedResources()
 }
 #endif // REHLDS_FIXES
 
+#ifdef REHLDS_FIXES
+// Cleans up one .res line. NULL if it holds no resource.
+char *SV_TrimResourceLine(char *line)
+{
+	while (*line && (uint8_t)*line <= ' ')
+		line++;
+
+	// Comments start at a token boundary, so models//foo.mdl survives
+	for (char *p = line; p[0]; p++)
+	{
+		if (p[0] == '/' && p[1] == '/' && (p == line || (uint8_t)p[-1] <= ' '))
+		{
+			p[0] = '\0';
+			break;
+		}
+	}
+
+	size_t len = Q_strlen(line);
+
+	while (len > 0 && (uint8_t)line[len - 1] <= ' ')
+		len--;
+
+	if (len >= 2 && line[0] == '"' && line[len - 1] == '"')
+	{
+		line++;
+		len -= 2;
+	}
+
+	line[len] = '\0';
+	return len ? line : NULL;
+}
+#endif // REHLDS_FIXES
+
 void SV_CreateGenericResources(void)
 {
 	char filename[MAX_PATH];
@@ -5581,12 +5614,33 @@ void SV_CreateGenericResources(void)
 
 	while (1)
 	{
+#ifdef REHLDS_FIXES
+		// FIXED: .res is line-delimited; COM_Parse shattered spaced paths
+		char *nextData = COM_ParseLine(data);
+		char *resName = SV_TrimResourceLine(com_token);
+
+		if (!resName)
+		{
+			if (!nextData)
+				break;	// end of file
+
+			data = nextData;
+			continue;	// blank line or a comment
+		}
+
+		// Everything below reads com_token
+		if (resName != com_token)
+			Q_memmove(com_token, resName, Q_strlen(resName) + 1);
+
+		// NULL on the last line; the next pass breaks
+		data = nextData;
+
+		char *com_token_extension = Q_strrchr(com_token, '.');
+		bool successful = false;
+#else
 		data = COM_Parse(data);
 		if (Q_strlen(com_token) <= 0)
 			break;
-#ifdef REHLDS_FIXES
-		char *com_token_extension = Q_strrchr(com_token, '.');
-		bool successful = false;
 #endif
 
 		if (Q_strstr(com_token, ".."))
@@ -5640,6 +5694,10 @@ void SV_CreateGenericResources(void)
 		{
 			// In fixed version of PrecacheGeneric we don't need local copy
 #ifdef REHLDS_FIXES
+			// Advertised RES_FATALIFMISSING anyway; may live only on fastdl
+			if (!FS_FileExists(com_token))
+				Con_Printf("WARNING: resource '%s' from '%s' not found!\n", com_token, filename);
+
 			PF_precache_generic_I(com_token);
 			Con_DPrintf("  %s\n", com_token);
 			g_psv.num_generic_names++;
@@ -7861,17 +7919,61 @@ qboolean IsSafeFileToDownload(const char *filename)
 	return TRUE;
 }
 
+#ifdef REHLDS_FIXES
+// Cmd_Argv(1) ends the path at its first space. NULL rejects the request.
+const char *SV_GetRequestedDownloadName(char *out, size_t outSize)
+{
+	const char *args = Cmd_Args();
+
+	// A quoted path is already complete in argv(1)
+	if (!args || !args[0] || args[0] == '"')
+		return Cmd_Argv(1);
+
+	// cmd_args keeps everything past a client-embedded newline
+	size_t len = 0;
+	while (args[len] && args[len] != '\n' && args[len] != '\r')
+	{
+		if (++len >= outSize)
+			return NULL;	// no legitimate resource path is this long
+	}
+
+	while (len > 0 && (uint8_t)args[len - 1] <= ' ')
+		len--;
+
+	if (len == 0)
+		return NULL;
+
+	Q_memcpy(out, args, len);
+	out[len] = '\0';
+	return out;
+}
+#endif // REHLDS_FIXES
+
 void SV_BeginFileDownload_f(void)
 {
 	const char *name;
 	char szModuleC[13] = "!ModuleC.dll";
+#ifdef REHLDS_FIXES
+	char namebuf[MAX_PATH];
+#endif
 
 	if (Cmd_Argc() < 2 || cmd_source == src_command)
 	{
 		return;
 	}
 
+#ifdef REHLDS_FIXES
+	// FIXED: Rebuild resource paths that contain spaces
+	name = SV_GetRequestedDownloadName(namebuf, sizeof(namebuf));
+	if (!name)
+	{
+		SV_FailDownload(Cmd_Argv(1));
+		return;
+	}
+#else
 	name = Cmd_Argv(1);
+#endif
+
 	if (!name || !name[0] || (!Q_strncmp(name, szModuleC, 12) && g_psvs.isSecure))
 	{
 		return;
