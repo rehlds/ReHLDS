@@ -1099,7 +1099,7 @@ void Mod_LoadClipnodes(lump_t *l)
 	loadmodel->clipnodes = out;
 	loadmodel->numclipnodes = count;
 
-	hull = &loadmodel->hulls[1];
+	hull = &loadmodel->hulls[human_hull];
 	hull->clipnodes = out;
 	hull->firstclipnode = 0;
 	hull->lastclipnode = count - 1;
@@ -1111,7 +1111,7 @@ void Mod_LoadClipnodes(lump_t *l)
 	hull->clip_maxs[1] = 16;
 	hull->clip_maxs[2] = 36;
 
-	hull = &loadmodel->hulls[2];
+	hull = &loadmodel->hulls[large_hull];
 	hull->clipnodes = out;
 	hull->firstclipnode = 0;
 	hull->lastclipnode = count - 1;
@@ -1123,7 +1123,7 @@ void Mod_LoadClipnodes(lump_t *l)
 	hull->clip_maxs[1] = 32;
 	hull->clip_maxs[2] = 32;
 
-	hull = &loadmodel->hulls[3];
+	hull = &loadmodel->hulls[head_hull];
 	hull->clipnodes = out;
 	hull->firstclipnode = 0;
 	hull->lastclipnode = count - 1;
@@ -1150,7 +1150,7 @@ void Mod_MakeHull0(void)
 	int			i, j, count;
 	hull_t		*hull;
 
-	hull = &loadmodel->hulls[0];
+	hull = &loadmodel->hulls[point_hull];
 
 	in = loadmodel->nodes;
 	count = loadmodel->numnodes;
@@ -1326,7 +1326,7 @@ void EXT_FUNC Mod_LoadBrushModel_internal(model_t *mod, void *buffer)
 	{
 		bm = &mod->submodels[i];
 
-		mod->hulls[0].firstclipnode = bm->headnode[0];
+		mod->hulls[point_hull].firstclipnode = bm->headnode[point_hull];
 		for (int j = 1; j < MAX_MAP_HULLS; j++)
 		{
 			mod->hulls[j].firstclipnode = bm->headnode[j];

@@ -426,7 +426,7 @@ void BSPModel::Clear()
 	Free(m_model.surfaces);
 	Free(m_model.marksurfaces);
 	Free(m_model.clipnodes);
-	Free(m_model.hulls[0].clipnodes);
+	Free(m_model.hulls[point_hull].clipnodes);
 	Free(m_model.texinfo);
 
 	if (m_model.textures)
@@ -503,7 +503,7 @@ void BSPModel::MakeHull0()
 	int i, j, count;
 	hull_t *hull;
 
-	hull = &m_model.hulls[0];
+	hull = &m_model.hulls[point_hull];
 
 	in = m_model.nodes;
 	count = m_model.numnodes;
@@ -981,7 +981,7 @@ void BSPModel::LoadClipnodes(lump_t *l)
 	m_model.clipnodes = out;
 	m_model.numclipnodes = count;
 
-	hull = &m_model.hulls[1];
+	hull = &m_model.hulls[human_hull];
 	hull->clipnodes = out;
 	hull->firstclipnode = 0;
 	hull->lastclipnode = count - 1;
@@ -993,7 +993,7 @@ void BSPModel::LoadClipnodes(lump_t *l)
 	hull->clip_maxs[1] = 16;
 	hull->clip_maxs[2] = 36;
 
-	hull = &m_model.hulls[2];
+	hull = &m_model.hulls[large_hull];
 	hull->clipnodes = out;
 	hull->firstclipnode = 0;
 	hull->lastclipnode = count - 1;
@@ -1005,7 +1005,7 @@ void BSPModel::LoadClipnodes(lump_t *l)
 	hull->clip_maxs[1] = 32;
 	hull->clip_maxs[2] = 32;
 
-	hull = &m_model.hulls[3];
+	hull = &m_model.hulls[head_hull];
 	hull->clipnodes = out;
 	hull->firstclipnode = 0;
 	hull->lastclipnode = count - 1;
@@ -1027,7 +1027,7 @@ void BSPModel::LoadClipnodes(lump_t *l)
 
 int BSPModel::TruePointContents(vec_t *point)
 {
-	hull_t *hull = &m_model.hulls[0];
+	hull_t *hull = &m_model.hulls[point_hull];
 	if (hull->firstclipnode >= hull->lastclipnode) {
 		return CONTENTS_EMPTY;
 	}
