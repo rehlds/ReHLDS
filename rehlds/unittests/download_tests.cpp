@@ -150,3 +150,36 @@ TEST(OverlongPathRejected, Download, 1000)
 		SV_GetRequestedDownloadName(namebuf, sizeof(namebuf)) == NULL);
 }
 #endif // REHLDS_FIXES
+
+// A duplicate dlfile request for a file that is already queued or in flight
+// must be detected, so it can be ignored instead of queued again (issue #1200).
+TEST(FileTransferActiveDetection, Download, 1000)
+{
+	EngineInitializer engInitGuard;
+
+	netchan_t chan;
+	Q_memset(&chan, 0, sizeof(chan));
+
+	CHECK("Idle channel has no active transfer", !Netchan_IsFileTransferActive(&chan, "models/model.mdl"));
+
+	// Queue a stub the way Netchan_CreateFileFragments does.
+	auto wait = (fragbufwaiting_t *)Mem_ZeroMalloc(sizeof(fragbufwaiting_t));
+	auto buf = (fragbuf_t *)Mem_ZeroMalloc(sizeof(fragbuf_t));
+	Q_strncpy(buf->filename, "models/model.mdl", sizeof(buf->filename) - 1);
+	buf->filename[sizeof(buf->filename) - 1] = 0;
+	wait->fragbufs = buf;
+	chan.waitlist[FRAG_FILE_STREAM] = wait;
+
+	CHECK("Queued file should be detected", Netchan_IsFileTransferActive(&chan, "models/model.mdl"));
+	CHECK("Detection should ignore case", Netchan_IsFileTransferActive(&chan, "MODELS/MODEL.MDL"));
+	CHECK("Other files must not be flagged", !Netchan_IsFileTransferActive(&chan, "models/other.mdl"));
+
+	// Move the stub into the in-flight head, the state Netchan_FragSend leaves.
+	auto inflight = (fragbuf_t *)Mem_ZeroMalloc(sizeof(fragbuf_t));
+	Q_strncpy(inflight->filename, "sound/ambient.wav", sizeof(inflight->filename) - 1);
+	inflight->filename[sizeof(inflight->filename) - 1] = 0;
+	chan.fragbufs[FRAG_FILE_STREAM] = inflight;
+	chan.waitlist[FRAG_FILE_STREAM] = NULL;
+
+	CHECK("In-flight file should be detected", Netchan_IsFileTransferActive(&chan, "sound/ambient.wav"));
+}

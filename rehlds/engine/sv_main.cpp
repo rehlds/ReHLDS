@@ -8024,6 +8024,14 @@ void SV_BeginFileDownload_f(void)
 		return;
 	}
 
+	// DoS hardening: drop duplicate download requests before any validation
+	// work - filesystem lookups on every flooded request are what still burns
+	// CPU while a transfer is active (issue #1200).
+	if (Netchan_IsFileTransferActive(&host_client->netchan, name))
+	{
+		return;		// this file is already being transferred
+	}
+
 	if (!IsSafeFileToDownload(name) || sv_allow_download.value == 0.0f)
 	{
 		SV_FailDownload(name);
@@ -8065,8 +8073,10 @@ void SV_BeginFileDownload_f(void)
 #ifdef REHLDS_FIXES
 		if (pbuf && size)
 		{
-			Netchan_CreateFileFragmentsFromBuffer(TRUE, &host_client->netchan, name, pbuf, size);
-			Netchan_FragSend(&host_client->netchan);
+			if (!Netchan_CreateFileFragmentsFromBuffer(TRUE, &host_client->netchan, name, pbuf, size))
+				SV_FailDownload(name);
+			else
+				Netchan_FragSend(&host_client->netchan);
 		}
 		// Mem_Free pbuf even if size is zero
 		if (pbuf)
@@ -8076,8 +8086,10 @@ void SV_BeginFileDownload_f(void)
 #else // REHLDS_FIXES
 		if (pbuf && size)
 		{
-			Netchan_CreateFileFragmentsFromBuffer(TRUE, &host_client->netchan, name, pbuf, size);
-			Netchan_FragSend(&host_client->netchan);
+			if (!Netchan_CreateFileFragmentsFromBuffer(TRUE, &host_client->netchan, name, pbuf, size))
+				SV_FailDownload(name);
+			else
+				Netchan_FragSend(&host_client->netchan);
 			Mem_Free((void *)pbuf);
 		}
 #endif // REHLDS_FIXES

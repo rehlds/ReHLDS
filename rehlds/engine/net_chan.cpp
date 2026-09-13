@@ -935,6 +935,28 @@ void Netchan_FragSend(netchan_t *chan)
 	}
 }
 
+qboolean Netchan_IsFileTransferActive(netchan_t *chan, const char *filename)
+{
+	fragbufwaiting_t *wait;
+
+	// The head of the file stream is the file currently being sent,
+	// every fragment of it carries the file name.
+	if (chan->fragbufs[FRAG_FILE_STREAM] && !Q_stricmp(chan->fragbufs[FRAG_FILE_STREAM]->filename, filename))
+	{
+		return TRUE;
+	}
+
+	for (wait = chan->waitlist[FRAG_FILE_STREAM]; wait; wait = wait->next)
+	{
+		if (wait->fragbufs && !Q_stricmp(wait->fragbufs->filename, filename))
+		{
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+
 void Netchan_AddBufferToList(fragbuf_t **pplist, fragbuf_t *pbuf)
 {
 	// Find best slot
@@ -1097,7 +1119,7 @@ void Netchan_CreateFragments(qboolean server, netchan_t *chan, sizebuf_t *msg)
 	Netchan_CreateFragments_(server, chan, msg);
 }
 
-void Netchan_CreateFileFragmentsFromBuffer(qboolean server, netchan_t *chan, const char *filename, unsigned char *uncompressed_pbuf, int uncompressed_size)
+int Netchan_CreateFileFragmentsFromBuffer(qboolean server, netchan_t *chan, const char *filename, unsigned char *uncompressed_pbuf, int uncompressed_size)
 {
 	int chunksize;
 	int send;
@@ -1113,7 +1135,16 @@ void Netchan_CreateFileFragmentsFromBuffer(qboolean server, netchan_t *chan, con
 	fragbufwaiting_t *wait;
 
 	if (!uncompressed_size)
-		return;
+		return FALSE;
+
+	// DoS hardening: ignore a duplicate request for a customization that is
+	// already being transferred or queued before doing any compression work
+	// (issue #1200).
+	if (server)
+	{
+		if (Netchan_IsFileTransferActive(chan, filename))
+			return TRUE;
+	}
 
 	bufferid = 1;
 	firstfragment = TRUE;
@@ -1157,7 +1188,7 @@ void Netchan_CreateFileFragmentsFromBuffer(qboolean server, netchan_t *chan, con
 				Mem_Free(pbuf);
 			}
 #endif
-			return;
+			return FALSE;
 		}
 
 		buf->bufferid = bufferid++;
@@ -1178,6 +1209,8 @@ void Netchan_CreateFileFragmentsFromBuffer(qboolean server, netchan_t *chan, con
 		buf->isfile = TRUE;
 		buf->size = send;
 		buf->foffset = pos;
+		Q_strncpy(buf->filename, filename, MAX_PATH - 1);
+		buf->filename[MAX_PATH - 1] = 0;
 
 		MSG_WriteBuf(&buf->frag_message, send, &pbuf[pos]);
 		pos += send;
@@ -1203,6 +1236,8 @@ void Netchan_CreateFileFragmentsFromBuffer(qboolean server, netchan_t *chan, con
 		Mem_Free(pbuf);
 	}
 #endif
+
+	return TRUE;
 }
 
 int Netchan_CreateFileFragments(qboolean server, netchan_t *chan, const char *filename)
@@ -1210,6 +1245,13 @@ int Netchan_CreateFileFragments(qboolean server, netchan_t *chan, const char *fi
 {
 	if (!server)
 		return Netchan_CreateFileFragments_(server, chan, filename);
+
+	// DoS hardening: ignore a duplicate request for a file that is already
+	// being transferred or queued before touching the filesystem, so a client
+	// cannot flood dlfile requests and force the server to stat and pack the
+	// file over and over (issue #1200).
+	if (Netchan_IsFileTransferActive(chan, filename))
+		return TRUE;
 
 	if (!FS_FileExists(filename))
 		return FALSE;
@@ -1248,6 +1290,17 @@ int Netchan_CreateFileFragments(qboolean server, netchan_t *chan, const char *fi
 int Netchan_CreateFileFragments_(qboolean server, netchan_t *chan, const char *filename)
 #endif // REHLDS_FIXES
 {
+#ifndef REHLDS_FIXES
+	// Without REHLDS_FIXES this body is the public Netchan_CreateFileFragments
+	// itself, so guard the client-spammable entry here as well. Must not run
+	// under REHLDS_FIXES: there this body is Netchan_CreateFileFragments_,
+	// re-entered from Netchan_FragSend for stubs that were already accepted.
+	if (server)
+	{
+		if (Netchan_IsFileTransferActive(chan, filename))
+			return TRUE;
+	}
+#endif // REHLDS_FIXES
 	int chunksize;
 	int compressedFileTime;
 	FileHandle_t hfile;
