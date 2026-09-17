@@ -236,13 +236,19 @@ jobs:
           # suite is frozen and its pool is being pruned from deb.debian.org.
           # Keep the same toolchain, but fetch the base suite from the Debian
           # archive and pin the security suite to its last complete snapshot.
+          # The security suite is fetched from the cloudflare snapshot mirror:
+          # plain snapshot.debian.org throttles CI bursts with connection
+          # resets, and https needs ca-certificates, which debian:11-slim
+          # does not ship, so bootstrap it from the archive first.
           cat > /etc/apt/sources.list <<'EOF'
           deb http://archive.debian.org/debian bullseye main
           deb http://archive.debian.org/debian bullseye-updates main
-          deb http://snapshot.debian.org/archive/debian-security/20260831T000000Z bullseye-security main
           EOF
           apt-get -o Acquire::Check-Valid-Until=false update
-          apt-get install -y \
+          apt-get install -y --no-install-recommends ca-certificates
+          echo 'deb https://snapshot-cloudflare.debian.org/archive/debian-security/20260831T000000Z bullseye-security main' > /etc/apt/sources.list.d/bullseye-security.list
+          apt-get -o Acquire::Check-Valid-Until=false -o Acquire::Retries=5 update
+          apt-get -o Acquire::Retries=5 install -y \
             gcc-multilib g++-multilib \
             build-essential \
             libc6-dev libc6-dev-i386 \
