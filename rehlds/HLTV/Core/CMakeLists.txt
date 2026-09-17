@@ -32,7 +32,7 @@ if ("$ENV{CXX}" MATCHES "icpc")
 else()
 	# Produce code optimized for the most common IA32/AMD64/EM64T processors.
 	# As new processors are deployed in the marketplace, the behavior of this option will change.
-	set(COMPILE_FLAGS "${COMPILE_FLAGS} -mtune=generic -msse3 -flto\
+	set(COMPILE_FLAGS "${COMPILE_FLAGS} -mtune=generic -msse3\
 		-fpermissive -fno-sized-deallocation\
 		-Wno-unused-result -Wno-unknown-pragmas -Wno-unused-variable\
 		-Wno-sign-compare -Wno-write-strings -Wno-strict-aliasing")
