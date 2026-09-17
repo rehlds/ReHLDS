@@ -232,8 +232,16 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          dpkg --add-architecture i386
-          apt-get update
+          # Debian 11 reached end of LTS on 2026-08-31: the bullseye-security
+          # suite is frozen and its pool is being pruned from deb.debian.org.
+          # Keep the same toolchain, but fetch the base suite from the Debian
+          # archive and pin the security suite to its last complete snapshot.
+          cat > /etc/apt/sources.list <<'EOF'
+          deb http://archive.debian.org/debian bullseye main
+          deb http://archive.debian.org/debian bullseye-updates main
+          deb http://snapshot.debian.org/archive/debian-security/20260831T000000Z bullseye-security main
+          EOF
+          apt-get -o Acquire::Check-Valid-Until=false update
           apt-get install -y \
             gcc-multilib g++-multilib \
             build-essential \
