@@ -1015,12 +1015,27 @@ void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fNetCmd, qboolean fCho
 
 	if (!sv_player->v.fixangle)
 	{
+#ifdef REHLDS_FIXES
+		vec3_t vecLastAngles;
+#endif // REHLDS_FIXES
+
 		sv_player->v.v_angle[0] = pmove->angles[0];
 		sv_player->v.v_angle[1] = pmove->angles[1];
 		sv_player->v.v_angle[2] = pmove->angles[2];
-		sv_player->v.angles[0] = float(-pmove->angles[0] / 3.0);
-		sv_player->v.angles[1] = pmove->angles[1];
-		sv_player->v.angles[2] = pmove->angles[2];
+
+#ifdef REHLDS_FIXES
+		// use the previously stored angles if we have them
+		if (g_UserCmdAnglesBacklog.GetRecord(host_client - g_psvs.clients, (unsigned int)sv_rehlds_movecmds_holdaim_backlog.value, vecLastAngles))
+		{
+			VectorCopy(vecLastAngles, sv_player->v.angles);
+		}
+		else
+#endif // REHLDS_FIXES
+		{	// no history yet...
+			sv_player->v.angles[0] = float(-pmove->angles[0] / 3.0);
+			sv_player->v.angles[1] = pmove->angles[1];
+			sv_player->v.angles[2] = pmove->angles[2];
+		}
 	}
 
 	sv_player->v.bInDuck = pmove->bInDuck;
@@ -1669,9 +1684,18 @@ void SV_ParseMove(client_t *pSenderClient)
 	host_client->packet_loss = packet_loss;
 	if (!g_psv.paused && (g_psvs.maxclients > 1 || !key_dest) && !(sv_player->v.flags & FL_FROZEN))
 	{
-		sv_player->v.v_angle[0] = cmds[0].viewangles[0];
-		sv_player->v.v_angle[1] = cmds[0].viewangles[1];
-		sv_player->v.v_angle[2] = cmds[0].viewangles[2];
+		VectorCopy(cmds[0].viewangles, sv_player->v.v_angle);
+
+#ifdef REHLDS_FIXES
+		if (numcmds)
+		{
+			g_UserCmdAnglesBacklog.Store(host_client - g_psvs.clients, &cmds[numcmds - 1]);	// eat up the very first command, not the last!
+		}
+		else if (numbackup)
+		{
+			g_UserCmdAnglesBacklog.Store(host_client - g_psvs.clients, &cmds[0]);
+		}
+#endif // REHLDS_FIXES
 	}
 	else
 	{

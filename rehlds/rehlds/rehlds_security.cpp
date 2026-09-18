@@ -23,6 +23,7 @@ cvar_t sv_rehlds_movecmdtime_max_warnings = { "sv_rehlds_movecmdtime_max_warning
 CMoveCommandRateLimiter g_MoveCommandRateLimiter;
 CStringCommandsRateLimiter g_StringCommandsRateLimiter;
 CUserCmdTimeLimiter g_UserCmdTimeLimiter;
+CUserCmdAnglesBacklog g_CUserCmdAnglesBacklog;
 
 CMoveCommandRateLimiter::CMoveCommandRateLimiter() {
 	Q_memset(m_AverageMoveCmdRate, 0, sizeof(m_AverageMoveCmdRate));
@@ -380,6 +381,51 @@ void CUserCmdTimeLimiter::Frame()
 	for (unsigned int i = 0; i < MAX_CLIENTS; i++) {
 		m_States[i].ticksThisFrame = 0;
 	}
+}
+
+CUserCmdAnglesBacklog::CUserCmdAnglesBacklog()
+{
+	Q_memset(m_History, 0, sizeof(m_History));
+}
+
+void CUserCmdAnglesBacklog::ClientConnected(unsigned int clientId)
+{
+	Q_memset(&m_History[clientId], 0, sizeof(m_History[clientId]));
+}
+
+void CUserCmdAnglesBacklog::Store(unsigned int clientId, usercmd_t* ucmd)
+{
+	usercmd_angles_history_t* ph = &m_History[clientId];
+
+	VectorCopy(ucmd->viewangles, ph->m_vecAngles[ph->m_nCurrent & MAX_ANGLES_MASK]);
+
+	ph->m_nCurrent++;
+
+	if (ph->m_nCount < MAX_ANGLES_HISTORY)
+		ph->m_nCount++;
+}
+
+bool CUserCmdAnglesBacklog::GetRecord(unsigned int clientId, unsigned int index, vec_t* out)
+{
+	usercmd_angles_history_t*	ph;
+	unsigned int				slot;
+
+	if (!out)
+	{
+		return false;
+	}
+
+	ph = &m_History[clientId];
+
+	if (index >= ph->m_nCount)
+	{
+		return false;
+	}
+
+	slot = (ph->m_nCurrent - 1 - index) & MAX_ANGLES_MASK;
+	VectorCopy(ph->m_vecAngles[slot], out);
+
+	return true;
 }
 
 void Rehlds_Security_Init() {

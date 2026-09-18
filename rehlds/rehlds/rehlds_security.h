@@ -2,6 +2,9 @@
 
 #include "engine.h"
 
+#define MAX_ANGLES_HISTORY 8
+#define MAX_ANGLES_MASK (MAX_ANGLES_HISTORY - 1)
+
 class CMoveCommandRateLimiter {
 public:
 	CMoveCommandRateLimiter();
@@ -81,6 +84,25 @@ private:
 };
 
 extern CUserCmdTimeLimiter g_UserCmdTimeLimiter;
+
+class CUserCmdAnglesBacklog {
+public:
+	CUserCmdAnglesBacklog();
+	void Store(unsigned int clientId, usercmd_t* ucmd);
+	void ClientConnected(unsigned int clientId);
+	bool GetRecord(unsigned int clientId, unsigned int index, vec_t* out);
+private:
+	typedef struct
+	{
+		vec3_t m_vecAngles[MAX_ANGLES_HISTORY];
+		unsigned int m_nCurrent;
+		unsigned int m_nCount;
+	} usercmd_angles_history_t;
+
+	usercmd_angles_history_t m_History[MAX_CLIENTS];
+};
+
+extern CUserCmdAnglesBacklog g_UserCmdAnglesBacklog;
 
 extern void Rehlds_Security_Init();
 extern void Rehlds_Security_Shutdown();
