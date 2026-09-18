@@ -925,6 +925,10 @@ IRehldsHookRegistry_SV_SendResources* CRehldsHookchains::SV_SendResources() {
 	return &m_SV_SendResources;
 }
 
+IRehldsHookRegistry_SV_TestEntityPosition* CRehldsHookchains::SV_TestEntityPosition() {
+	return &m_SV_TestEntityPosition;
+}
+
 int EXT_FUNC CRehldsApi::GetMajorVersion()
 {
 	return REHLDS_API_VERSION_MAJOR;

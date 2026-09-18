@@ -264,6 +264,10 @@ typedef IHookChainRegistry<bool, edict_t*, edict_t*> IRehldsHookRegistry_SV_Allo
 typedef IVoidHookChain<sizebuf_t *> IRehldsHook_SV_SendResources;
 typedef IVoidHookChainRegistry<sizebuf_t *> IRehldsHookRegistry_SV_SendResources;
 
+//SV_TestEntityPosition hook
+typedef IHookChain<edict_t*, edict_t*> IRehldsHook_SV_TestEntityPosition;
+typedef IHookChainRegistry<edict_t*, edict_t*> IRehldsHookRegistry_SV_TestEntityPosition;
+
 class IRehldsHookchains {
 public:
 	virtual ~IRehldsHookchains() { }
@@ -324,6 +328,7 @@ public:
 	virtual IRehldsHookRegistry_SV_ClientPrintf* SV_ClientPrintf() = 0;
 	virtual IRehldsHookRegistry_SV_AllowPhysent* SV_AllowPhysent() = 0;
 	virtual IRehldsHookRegistry_SV_SendResources* SV_SendResources() = 0;
+	virtual IRehldsHookRegistry_SV_TestEntityPosition* SV_TestEntityPosition() = 0;
 };
 
 struct RehldsFuncs_t {
