@@ -10,6 +10,18 @@ cvar_t sv_rehlds_movecmdrate_burst_punish = { "sv_rehlds_movecmdrate_burst_punis
 cvar_t sv_rehlds_stringcmdrate_avg_punish = { "sv_rehlds_stringcmdrate_avg_punish", "5", 0, 5.0f, NULL };
 cvar_t sv_rehlds_stringcmdrate_burst_punish = { "sv_rehlds_stringcmdrate_burst_punish", "5", 0, 5.0f, NULL };
 
+cvar_t sv_rehlds_dlfile_bucket_size = { "sv_rehlds_dlfile_bucket_size", "0", 0, 0.0f, NULL };
+cvar_t sv_rehlds_dlfile_refillrate = { "sv_rehlds_dlfile_refillrate", "50", 0, 50.0f, NULL };
+cvar_t sv_rehlds_dlfile_punish = { "sv_rehlds_dlfile_punish", "-1", 0, -1.0f, NULL };
+
+// dlfile requests that arrive with an empty bucket are dropped; a client that
+// keeps hammering a dropped bucket this many times in a row is flooding the
+// filesystem on purpose.
+const unsigned int MAX_DLFILE_EMPTY_STRIKES = 100;
+// The default bucket is sized from the map resource list, so a legitimate
+// client can always fetch every missing resource with one connect batch.
+const float DLFILE_BUCKET_MARGIN = 16.0f;
+
 cvar_t sv_rehlds_movecmd_max_ticks = { "sv_rehlds_movecmd_max_ticks", "24", 0, 24.0f, NULL };
 cvar_t sv_rehlds_movecmd_max_null_streak = { "sv_rehlds_movecmd_max_null_streak", "0", 0, 0.0f, NULL };
 cvar_t sv_rehlds_movecmd_clamp_interp = { "sv_rehlds_movecmd_clamp_interp", "1", 0, 1.0f, NULL };
@@ -23,6 +35,7 @@ cvar_t sv_rehlds_movecmdtime_max_warnings = { "sv_rehlds_movecmdtime_max_warning
 CMoveCommandRateLimiter g_MoveCommandRateLimiter;
 CStringCommandsRateLimiter g_StringCommandsRateLimiter;
 CUserCmdTimeLimiter g_UserCmdTimeLimiter;
+CDlFileRateLimiter g_DlFileRateLimiter;
 
 CMoveCommandRateLimiter::CMoveCommandRateLimiter() {
 	Q_memset(m_AverageMoveCmdRate, 0, sizeof(m_AverageMoveCmdRate));
@@ -184,6 +197,76 @@ void CStringCommandsRateLimiter::CheckAverageRate(unsigned int clientId) {
 			SV_DropClient(cl, false, "Banned for string commands flooding (Avg)");
 		}
 	}
+}
+
+CDlFileRateLimiter::CDlFileRateLimiter() {
+	Q_memset(m_Tokens, 0, sizeof(m_Tokens));
+	Q_memset(m_LastRefillTime, 0, sizeof(m_LastRefillTime));
+	Q_memset(m_EmptyStrikes, 0, sizeof(m_EmptyStrikes));
+}
+
+float CDlFileRateLimiter::GetBucketCapacity() {
+	if (sv_rehlds_dlfile_bucket_size.value > 0.0f) {
+		return sv_rehlds_dlfile_bucket_size.value;
+	}
+
+	return (float)g_psv.num_resources + DLFILE_BUCKET_MARGIN;
+}
+
+void CDlFileRateLimiter::ClientConnected(unsigned int clientId) {
+	m_Tokens[clientId] = GetBucketCapacity();
+	m_LastRefillTime[clientId] = realtime;
+	m_EmptyStrikes[clientId] = 0;
+}
+
+qboolean CDlFileRateLimiter::DlFileIssued(unsigned int clientId) {
+	// a negative bucket size disables dlfile rate limiting
+	if (sv_rehlds_dlfile_bucket_size.value < 0.0f) {
+		return FALSE;
+	}
+
+	if (sv_rehlds_dlfile_refillrate.value > 0.0f && realtime > m_LastRefillTime[clientId]) {
+		m_Tokens[clientId] += (float)((realtime - m_LastRefillTime[clientId]) * sv_rehlds_dlfile_refillrate.value);
+	}
+
+	m_LastRefillTime[clientId] = realtime;
+
+	float capacity = GetBucketCapacity();
+	if (m_Tokens[clientId] > capacity) {
+		m_Tokens[clientId] = capacity;
+	}
+
+	if (m_Tokens[clientId] >= 1.0f) {
+		m_Tokens[clientId] -= 1.0f;
+		m_EmptyStrikes[clientId] = 0;
+		return FALSE;
+	}
+
+	// the bucket is empty: drop the request, a client that keeps asking for
+	// more is flooding the filesystem on purpose (issue #1200)
+	m_EmptyStrikes[clientId]++;
+	CheckEmptyStrikes(clientId);
+	return TRUE;
+}
+
+void CDlFileRateLimiter::CheckEmptyStrikes(unsigned int clientId) {
+	client_t* cl = &g_psvs.clients[clientId];
+	if (m_EmptyStrikes[clientId] < MAX_DLFILE_EMPTY_STRIKES) {
+		return;
+	}
+
+	if (sv_rehlds_dlfile_punish.value < 0.0f) {
+		Con_DPrintf("%s Kicked for dlfile flooding (%u dropped requests)\n", cl->name, m_EmptyStrikes[clientId]);
+		SV_DropClient(cl, false, "Kicked for dlfile flooding");
+	}
+	else
+	{
+		Con_DPrintf("%s Banned for dlfile flooding (%u dropped requests)\n", cl->name, m_EmptyStrikes[clientId]);
+		Cbuf_AddText(va("addip %.1f %s\n", sv_rehlds_dlfile_punish.value, NET_BaseAdrToString(cl->netchan.remote_address)));
+		SV_DropClient(cl, false, "Banned for dlfile flooding");
+	}
+
+	m_EmptyStrikes[clientId] = 0;
 }
 
 CUserCmdTimeLimiter::CUserCmdTimeLimiter()
@@ -394,6 +477,10 @@ void Rehlds_Security_Init() {
 	Cvar_RegisterVariable(&sv_rehlds_stringcmdrate_avg_punish);
 	Cvar_RegisterVariable(&sv_rehlds_stringcmdrate_burst_punish);
 
+	Cvar_RegisterVariable(&sv_rehlds_dlfile_bucket_size);
+	Cvar_RegisterVariable(&sv_rehlds_dlfile_refillrate);
+	Cvar_RegisterVariable(&sv_rehlds_dlfile_punish);
+
 	Cvar_RegisterVariable(&sv_rehlds_movecmd_max_ticks);
 	Cvar_RegisterVariable(&sv_rehlds_movecmd_max_null_streak);
 	Cvar_RegisterVariable(&sv_rehlds_movecmd_clamp_interp);
@@ -422,5 +509,6 @@ void Rehlds_Security_ClientConnected(unsigned int clientId) {
 	g_MoveCommandRateLimiter.ClientConnected(clientId);
 	g_StringCommandsRateLimiter.ClientConnected(clientId);
 	g_UserCmdTimeLimiter.ClientConnected(clientId);
+	g_DlFileRateLimiter.ClientConnected(clientId);
 #endif
 }

@@ -42,6 +42,26 @@ private:
 
 extern CStringCommandsRateLimiter g_StringCommandsRateLimiter;
 
+class CDlFileRateLimiter {
+public:
+	CDlFileRateLimiter();
+	// Consumes one token for a dlfile request. Returns TRUE when the request
+	// must be dropped because the client's bucket is empty.
+	qboolean DlFileIssued(unsigned int clientId);
+	void ClientConnected(unsigned int clientId);
+
+private:
+	float GetBucketCapacity();
+	void CheckEmptyStrikes(unsigned int clientId);
+
+private:
+	float m_Tokens[MAX_CLIENTS];
+	double m_LastRefillTime[MAX_CLIENTS];
+	unsigned int m_EmptyStrikes[MAX_CLIENTS];
+};
+
+extern CDlFileRateLimiter g_DlFileRateLimiter;
+
 class CUserCmdTimeLimiter {
 public:
 	CUserCmdTimeLimiter();

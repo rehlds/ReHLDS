@@ -183,3 +183,27 @@ TEST(FileTransferActiveDetection, Download, 1000)
 
 	CHECK("In-flight file should be detected", Netchan_IsFileTransferActive(&chan, "sound/ambient.wav"));
 }
+
+// The dlfile token bucket absorbs a full connect batch and drops requests
+// once it runs dry; tokens are restored over time and on every 'new' (issue #1200).
+TEST(DlFileTokenBucket, Download, 1000)
+{
+	g_psv.num_resources = 0;
+	realtime = 1000.0;
+	g_DlFileRateLimiter.ClientConnected(0);
+
+	// default bucket is auto-sized: num_resources + margin = 16 tokens
+	for (int i = 0; i < 16; i++)
+		CHECK("Bucket should hold the whole connect batch", !g_DlFileRateLimiter.DlFileIssued(0));
+	CHECK("Empty bucket must drop the request", g_DlFileRateLimiter.DlFileIssued(0));
+
+	// tokens are restored over time (50/s * 0.5s = 25)
+	realtime += 0.5;
+	CHECK("Refilled token should be available", !g_DlFileRateLimiter.DlFileIssued(0));
+
+	// every 'new' refreshes the bucket for the next map batch
+	g_DlFileRateLimiter.ClientConnected(0);
+	for (int i = 0; i < 16; i++)
+		CHECK("Reset should restore the bucket", !g_DlFileRateLimiter.DlFileIssued(0));
+	CHECK("Bucket is empty again after the batch", g_DlFileRateLimiter.DlFileIssued(0));
+}

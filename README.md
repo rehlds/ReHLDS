@@ -76,6 +76,9 @@ This means that plugins that do binary code analysis (Orpheu for example) probab
 <li>sv_rehlds_stringcmdrate_avg_punish // Time in minutes for which the player will be banned (0 - Permanent, use a negative number for a kick). Default: 5
 <li>sv_rehlds_stringcmdrate_max_burst // Max burst level of 'string' cmds for ban. Default: 400
 <li>sv_rehlds_stringcmdrate_burst_punish // Time in minutes for which the player will be banned (0 - Permanent, use a negative number for a kick). Default: 5
+<li>sv_rehlds_dlfile_bucket_size // Max size of the dlfile token bucket. 0 - automatic (map resource list size + 16), a negative number disables dlfile rate limiting. Default: 0
+<li>sv_rehlds_dlfile_refillrate // How many dlfile tokens are restored per second. Default: 50
+<li>sv_rehlds_dlfile_punish // Time in minutes for which the player will be banned for dlfile flooding (0 - Permanent, use a negative number for a kick). Default: -1 (kick)
 <li>sv_rehlds_userinfo_transmitted_fields // Userinfo fields only with these keys will be transmitted to clients via network. If not set then all fields will be transmitted (except prefixed with underscore). Each key must be prefixed by backslash, for example "\name\model\*sid\*hltv\bottomcolor\topcolor". See [wiki](https://github.com/rehlds/ReHLDS/wiki/Userinfo-keys) to collect sufficient set of keys for your server. Default: ""
 <li>sv_rehlds_attachedentities_playeranimationspeed_fix // Fixes bug with gait animation speed increase when player has some attached entities (aiments). Can cause animation lags when cl_updaterate is low. Default: 0
 <li>sv_rehlds_maxclients_from_single_ip // Limit number of connections at the same time from single IP address, not confuse to already connected players. Default: 5
