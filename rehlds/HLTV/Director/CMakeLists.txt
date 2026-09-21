@@ -33,7 +33,7 @@ else()
 	# Produce code optimized for the most common IA32/AMD64/EM64T processors.
 	# As new processors are deployed in the marketplace, the behavior of this option will change.
 	set(COMPILE_FLAGS "${COMPILE_FLAGS} \
-		-mtune=generic -msse3 -flto\
+		-mtune=generic -msse3\
 		-fpermissive -fno-sized-deallocation\
 		-Wno-unused-result -Wno-unknown-pragmas\
 		-Wno-write-strings -Wno-strict-aliasing")
