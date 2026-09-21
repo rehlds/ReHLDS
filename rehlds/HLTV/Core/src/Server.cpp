@@ -121,6 +121,10 @@ bool Server::Init(IBaseSystem *system, int serial, char *name)
 	m_IsVoiceBlocking = false;
 	m_ServerSocket = nullptr;
 
+#ifdef HLTV_FIXES
+	m_PendingIntermission = false;
+#endif
+
 	m_ServerChannel.Create(system);
 	m_ServerInfo.SetMaxSize(512);
 
@@ -1364,6 +1368,14 @@ void Server::ParseSignonNum()
 	}
 
 	SetState(SERVER_RUNNING);
+
+#ifdef HLTV_FIXES
+	if (m_PendingIntermission && m_ServerState == SERVER_RUNNING)
+	{
+		m_PendingIntermission = false;
+		ParseIntermission();
+	}
+#endif
 }
 
 void Server::ParseCustomization()
@@ -1998,6 +2010,15 @@ void Server::ParseClientData()
 
 void Server::ParseIntermission()
 {
+#ifdef HLTV_FIXES
+	if (m_ServerState < SERVER_RUNNING)
+	{
+		m_System->DPrintf("Received intermission too early; deferring until RUNNING.\n");
+		m_PendingIntermission = true;
+		return;
+	}
+#endif
+
 	SetState(SERVER_INTERMISSION);
 
 	if (!IsDemoFile()) {
@@ -2289,6 +2310,10 @@ void Server::Reset()
 	m_IsPaused = false;
 	m_IsGameServer = false;
 	m_Time = 0;
+
+#ifdef HLTV_FIXES
+	m_PendingIntermission = false;
+#endif
 
 	m_DemoFile.Reset();
 	SetState(SERVER_DISCONNECTED);
