@@ -169,6 +169,7 @@ void Host_Kill_f(void);
 void Host_TogglePause_f(void);
 void Host_Pause_f(void);
 void Host_Unpause_f(void);
+void Host_Pause_api(bool setPause);
 void Host_Interp_f(void);
 void Host_NextDemo(void);
 void Host_Startdemos_f(void);
