@@ -190,7 +190,7 @@ hull_t *SV_HullForBsp(edict_t *ent, const vec_t *mins, const vec_t *maxs, vec_t 
 
 	if (size[0] <= 8.0f)
 	{
-		hull = &model->hulls[0];
+		hull = &model->hulls[point_hull];
 		VectorCopy(hull->clip_mins, offset);
 	}
 	else
@@ -202,13 +202,13 @@ hull_t *SV_HullForBsp(edict_t *ent, const vec_t *mins, const vec_t *maxs, vec_t 
 #else
 			if (size[2] <= 36.0f)
 #endif
-				hull = &model->hulls[3];
+				hull = &model->hulls[head_hull];
 			else
-				hull = &model->hulls[1];
+				hull = &model->hulls[human_hull];
 		}
 		else
 		{
-			hull = &model->hulls[2];
+			hull = &model->hulls[large_hull];
 		}
 
 		// calculate an offset value to center the origin
@@ -1452,7 +1452,7 @@ void SV_SingleClipMoveToPoint(const vec_t *start, const vec_t *end, trace_t *tra
 	trace->allsolid = TRUE;
 	VectorCopy(end, trace->endpos);
 
-	hull_t *hull = &g_psv.models[1]->hulls[0]; // world point hull
+	hull_t *hull = &g_psv.models[1]->hulls[point_hull]; // world point hull
 	SV_RecursiveHullCheck(hull, hull->firstclipnode, 0.0f, 1.0f, start, end, trace);
 
 	if (trace->fraction != 1.0f)
