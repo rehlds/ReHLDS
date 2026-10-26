@@ -183,6 +183,7 @@ set(ENGINE_SRCS
 	rehlds/rehlds_api_impl.cpp
 	rehlds/rehlds_interfaces_impl.cpp
 	rehlds/rehlds_messagemngr_impl.cpp
+	rehlds/rehlds_studio_impl.cpp
 	rehlds/rehlds_security.cpp
 )
 

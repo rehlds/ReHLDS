@@ -77,6 +77,15 @@ void R_StudioCalcBonePosition(int frame, float s, mstudiobone_t *pbone, mstudioa
 void R_StudioSlerpBones(vec4_t *q1, vec3_t *pos1, vec4_t *q2, vec3_t *pos2, float s);
 mstudioanim_t *R_GetAnim(model_t *psubmodel, mstudioseqdesc_t *pseqdesc);
 void SV_StudioSetupBones(model_t *pModel, float frame, int sequence, const vec_t *angles, const vec_t *origin, const unsigned char *pcontroller, const unsigned char *pblending, int iBone, const edict_t *edict);
+void SV_StudioSetupBones_internal(model_t *pModel, float frame, int sequence, const vec_t *angles, const vec_t *origin, const unsigned char *pcontroller, const unsigned char *pblending, int iBone, const edict_t *edict);
+void SV_BlendingSetupBones(model_t *pModel, float frame, int sequence, const vec_t *angles, const vec_t *origin, const unsigned char *pcontroller, const unsigned char *pblending, int iBone, const edict_t *edict);
+int SV_StudioShieldHitbox();
+bool SV_StudioSkipsShield(const edict_t *pEdict);
+
+// Sets up the bones of the entity in the pose traces take against it, through the hooks of modules;
+// the header of its studio model, or NULL
+studiohdr_t *SV_StudioSetupTraceBones(const edict_t *pEdict);
+
 void SV_SetStudioHullPlane(mplane_t *pplane, int iBone, int k, float dist);
 hull_t *R_StudioHull(model_t *pModel, float frame, int sequence, const vec_t *angles, const vec_t *origin, const vec_t *size, const unsigned char *pcontroller, const unsigned char *pblending, int *pNumHulls, const edict_t *pEdict, int bSkipShield);
 int SV_HitgroupForStudioHull(int index);

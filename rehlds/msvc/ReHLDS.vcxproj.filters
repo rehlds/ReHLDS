@@ -347,6 +347,9 @@
     <ClCompile Include="..\rehlds\rehlds_messagemngr_impl.cpp">
       <Filter>rehlds</Filter>
     </ClCompile>
+    <ClCompile Include="..\rehlds\rehlds_studio_impl.cpp">
+      <Filter>rehlds</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\version\version.h">
@@ -1070,6 +1073,12 @@
       <Filter>rehlds</Filter>
     </ClInclude>
     <ClInclude Include="..\public\rehlds\IMessageManager.h">
+      <Filter>public\rehlds</Filter>
+    </ClInclude>
+    <ClInclude Include="..\rehlds\rehlds_studio_impl.h">
+      <Filter>rehlds</Filter>
+    </ClInclude>
+    <ClInclude Include="..\public\rehlds\rehlds_studio.h">
       <Filter>public\rehlds</Filter>
     </ClInclude>
   </ItemGroup>

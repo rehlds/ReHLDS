@@ -36,9 +36,10 @@
 #include "model.h"
 #include "ObjectList.h"
 #include "pr_dlls.h"
+#include "rehlds_studio.h"
 
 #define REHLDS_API_VERSION_MAJOR 3
-#define REHLDS_API_VERSION_MINOR 15
+#define REHLDS_API_VERSION_MINOR 16
 
 //Steam_NotifyClientConnect hook
 typedef IHookChain<qboolean, IGameClient*, const void*, unsigned int> IRehldsHook_Steam_NotifyClientConnect;
@@ -264,6 +265,11 @@ typedef IHookChainRegistry<bool, edict_t*, edict_t*> IRehldsHookRegistry_SV_Allo
 typedef IVoidHookChain<sizebuf_t *> IRehldsHook_SV_SendResources;
 typedef IVoidHookChainRegistry<sizebuf_t *> IRehldsHookRegistry_SV_SendResources;
 
+//SV_StudioSetupBones hook: around every call of the engine into the blending interface of the game,
+//for traces, bone positions and attachments; after the original the bones are in IRehldsStudio::GetBoneTransform
+typedef IVoidHookChain<model_t *, float, int, const vec_t *, const vec_t *, const unsigned char *, const unsigned char *, int, const edict_t *> IRehldsHook_SV_StudioSetupBones;
+typedef IVoidHookChainRegistry<model_t *, float, int, const vec_t *, const vec_t *, const unsigned char *, const unsigned char *, int, const edict_t *> IRehldsHookRegistry_SV_StudioSetupBones;
+
 class IRehldsHookchains {
 public:
 	virtual ~IRehldsHookchains() { }
@@ -324,6 +330,7 @@ public:
 	virtual IRehldsHookRegistry_SV_ClientPrintf* SV_ClientPrintf() = 0;
 	virtual IRehldsHookRegistry_SV_AllowPhysent* SV_AllowPhysent() = 0;
 	virtual IRehldsHookRegistry_SV_SendResources* SV_SendResources() = 0;
+	virtual IRehldsHookRegistry_SV_StudioSetupBones* SV_StudioSetupBones() = 0;
 };
 
 struct RehldsFuncs_t {
@@ -451,6 +458,7 @@ public:
 	virtual IRehldsServerData* GetServerData() = 0;
 	virtual IRehldsFlightRecorder* GetFlightRecorder() = 0;
 	virtual IMessageManager *GetMessageManager() = 0;
+	virtual IRehldsStudio *GetStudio() = 0;
 };
 
 #define VREHLDS_HLDS_API_VERSION "VREHLDS_HLDS_API_VERSION001"

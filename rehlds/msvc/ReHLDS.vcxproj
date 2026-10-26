@@ -120,6 +120,7 @@
     <ClCompile Include="..\rehlds\flight_recorder.cpp" />
     <ClCompile Include="..\rehlds\main.cpp" />
     <ClCompile Include="..\rehlds\rehlds_messagemngr_impl.cpp" />
+    <ClCompile Include="..\rehlds\rehlds_studio_impl.cpp" />
     <ClCompile Include="..\rehlds\rehlds_api_impl.cpp" />
     <ClCompile Include="..\rehlds\rehlds_interfaces_impl.cpp" />
     <ClCompile Include="..\rehlds\hookchains_impl.cpp" />
@@ -402,6 +403,7 @@
     <ClInclude Include="..\public\rehlds\progdefs.h" />
     <ClInclude Include="..\public\rehlds\progs.h" />
     <ClInclude Include="..\public\rehlds\rehlds_api.h" />
+    <ClInclude Include="..\public\rehlds\rehlds_studio.h" />
     <ClInclude Include="..\public\rehlds\rehlds_interfaces.h" />
     <ClInclude Include="..\public\rehlds\Sequence.h" />
     <ClInclude Include="..\public\rehlds\shake.h" />
@@ -448,6 +450,7 @@
     <ClInclude Include="..\rehlds\flight_recorder.h" />
     <ClInclude Include="..\rehlds\hookchains_impl.h" />
     <ClInclude Include="..\rehlds\rehlds_messagemngr_impl.h" />
+    <ClInclude Include="..\rehlds\rehlds_studio_impl.h" />
     <ClInclude Include="..\rehlds\platform.h" />
     <ClInclude Include="..\rehlds\precompiled.h" />
     <ClInclude Include="..\rehlds\RehldsRuntimeConfig.h" />
