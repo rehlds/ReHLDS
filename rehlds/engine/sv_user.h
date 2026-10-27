@@ -34,6 +34,7 @@
 #include "pm_defs.h"
 
 const int CMD_MAXBACKUP = 64;
+const int CMD_MOSTRECENT = 0;
 
 typedef struct sv_adjusted_positions_s
 {
@@ -76,6 +77,7 @@ extern cvar_t sv_voiceenable;
 
 extern qboolean nofind;
 
+resource_t *SV_GetResourceList();
 void SV_ParseConsistencyResponse(client_t *pSenderClient);
 qboolean SV_FileInConsistencyList(const char *filename, consistency_t **ppconsist);
 int SV_TransferConsistencyInfo(void);
@@ -91,15 +93,14 @@ void SV_CheckMovingGround(edict_t *player, float frametime);
 void SV_ConvertPMTrace(trace_t *dest, pmtrace_t *src, edict_t *ent);
 void SV_ForceFullClientsUpdate(void);
 void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fNetCmd = FALSE, qboolean fChopped = FALSE);
-int SV_ValidateClientCommand(char *pszCommand);
 float SV_CalcClientTime(client_t *cl);
 void SV_ComputeLatency(client_t *cl);
 int SV_UnlagCheckTeleport(vec_t *v1, vec_t *v2);
 void SV_GetTrueOrigin(int player, vec_t *origin);
 void SV_GetTrueMinMax(int player, float **fmin, float **fmax);
 entity_state_t *SV_FindEntInPack(int index, packet_entities_t *pack);
-void SV_SetupMove(client_t *_host_client);
-void SV_RestoreMove(client_t *_host_client);
+void SV_SetupMove(client_t *client);
+void SV_RestoreMove(client_t *client);
 void SV_ParseStringCommand(client_t *pSenderClient);
 void SV_ParseDelta(client_t *pSenderClient);
 void SV_EstablishTimeBase(client_t *cl, usercmd_t *cmds, int dropped, int numbackup, int numcmds);

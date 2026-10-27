@@ -33,12 +33,8 @@ qboolean g_balreadymoved;
 
 float s_LastFullUpdate[33];
 
-//cvar_t sv_voicecodec;
-//cvar_t sv_voicequality;
-
 edict_t *sv_player;
 
-//int giSkip;
 qboolean nofind;
 
 #if defined(SWDS) && defined(REHLDS_FIXES)
@@ -76,145 +72,165 @@ clc_func_t sv_clcfuncs[] = {
 	{ clc_endoflist,       "End of List",         nullptr                      },
 };
 
-bool EXT_FUNC SV_CheckConsistencyResponse_API(IGameClient *client, resource_t *res, uint32 hash) {
+// Layout of resource_t::rguc_reserved for a model with a bounds check:
+// the force type byte, then mins and maxs as three floats each
+const int CONSISTENCY_MINS_OFFSET = 1;
+const int CONSISTENCY_MAXS_OFFSET = 13;
+
+// Resource list the consistency check works on
+resource_t *SV_GetResourceList()
+{
+#ifdef REHLDS_FIXES
+	return g_rehlds_sv.resources;
+#else // REHLDS_FIXES
+	return g_psv.resourcelist;
+#endif // REHLDS_FIXES
+}
+
+void SV_GetConsistencyBounds(const unsigned char *reserved, vec3_t mins, vec3_t maxs)
+{
+	Q_memcpy(mins, &reserved[CONSISTENCY_MINS_OFFSET], sizeof(vec3_t));
+	Q_memcpy(maxs, &reserved[CONSISTENCY_MAXS_OFFSET], sizeof(vec3_t));
+}
+
+void SV_SetConsistencyBounds(unsigned char *reserved, const vec_t *mins, const vec_t *maxs)
+{
+	Q_memcpy(&reserved[CONSISTENCY_MINS_OFFSET], mins, sizeof(vec3_t));
+	Q_memcpy(&reserved[CONSISTENCY_MAXS_OFFSET], maxs, sizeof(vec3_t));
+}
+
+bool EXT_FUNC SV_CheckConsistencyResponse_API(IGameClient *client, resource_t *res, uint32 hash)
+{
 	return (hash != *(uint32 *)&res->rgucMD5_hash[0]);
 }
 
-void SV_ParseConsistencyResponse(client_t *pSenderClient)
+// Reads the model bounds of a resource and compares them with the forced ones.
+// Returns true when the client violates them. An unknown force type flags a bad read.
+bool SV_ReadModelBoundsResponse(const resource_t *r)
 {
-	vec3_t mins;
-	vec3_t maxs;
 	vec3_t cmins;
 	vec3_t cmaxs;
-	unsigned char nullbuffer[32];
-	unsigned char resbuffer[32];
+	MSG_ReadBitData(cmins, 12);
+	MSG_ReadBitData(cmaxs, 12);
 
-	int length = 0;
-	int c = 0;
-	Q_memset(nullbuffer, 0, sizeof(nullbuffer));
-	int value = MSG_ReadShort();
+	// Requirement is stored scrambled
+	unsigned char required[sizeof(r->rguc_reserved)];
+	Q_memcpy(required, r->rguc_reserved, sizeof(required));
+	COM_UnMunge(required, sizeof(required), g_psvs.spawncount);
 
-	if (value <= 0 || !SZ_HasSomethingToRead(&net_message, value))
+	vec3_t mins;
+	vec3_t maxs;
+	SV_GetConsistencyBounds(required, mins, maxs);
+
+	switch ((FORCE_TYPE)required[0])
+	{
+	case force_model_samebounds:
+		return !VectorCompare(cmins, mins) || !VectorCompare(cmaxs, maxs);
+
+	case force_model_specifybounds:
+		return BoundsExceed(cmins, cmaxs, mins, maxs);
+
+	case force_model_specifybounds_if_avail:
+		// Bounds of -1 on every axis are not checked
+		if (cmins[0] == -1.0f && cmins[1] == -1.0f && cmins[2] == -1.0f &&
+			cmaxs[0] == -1.0f && cmaxs[1] == -1.0f && cmaxs[2] == -1.0f)
+			return false;
+
+		return BoundsExceed(cmins, cmaxs, mins, maxs);
+
+	default:
+		msg_badread = TRUE;
+		return true;
+	}
+}
+
+// Parses the consistency info sent by the client to find out how many resources differ or are missing
+void SV_ParseConsistencyResponse(client_t *pSenderClient)
+{
+	int length = MSG_ReadShort();
+
+	if (length <= 0 || !SZ_HasSomethingToRead(&net_message, length))
 	{
 		msg_badread = TRUE;
-		Con_DPrintf("%s:  %s:%s invalid length: %d\n", __func__, host_client->name, NET_AdrToString(host_client->netchan.remote_address), value);
+		Con_DPrintf("%s:  %s:%s invalid length: %d\n", __func__, host_client->name, NET_AdrToString(host_client->netchan.remote_address), length);
 		SV_DropClient(host_client, FALSE, "Invalid length");
 		return;
 	}
 
-	COM_UnMunge(&net_message.data[msg_readcount], value, g_psvs.spawncount);
+	COM_UnMunge(&net_message.data[msg_readcount], length, g_psvs.spawncount);
 	MSG_StartBitReading(&net_message);
 
+	resource_t *resources = SV_GetResourceList();
+	unsigned char nullbuffer[sizeof(resource_t::rguc_reserved)] = {};
+
+	// 0 - all matches, -1 - malformed data, otherwise the index of the last differing resource + 1
+	int dropclient = 0;
+	int count = 0;
+
+	// Read consistency info
 	while (MSG_ReadBits(1))
 	{
 		int idx = MSG_ReadBits(12);
 		if (idx < 0 || idx >= g_psv.num_resources)
 		{
-			c = -1;
+			dropclient = -1;
 			break;
 		}
 
-#ifdef REHLDS_FIXES
-		resource_t *r = &g_rehlds_sv.resources[idx];
-#else // REHLDS_FIXES
-		resource_t *r = &g_psv.resourcelist[idx];
-#endif // REHLDS_FIXES
+		resource_t *r = &resources[idx];
 		if (!(r->ucFlags & RES_CHECKFILE))
 		{
-			c = -1;
+			dropclient = -1;
 			break;
 		}
 
-		Q_memcpy(resbuffer, r->rguc_reserved, sizeof(resbuffer));
-		if (!Q_memcmp(resbuffer, nullbuffer, sizeof(resbuffer)))
+		// Models carry the bounds requirement in the reserved block, other resources are checked by their hash only
+		bool differs;
+		if (!Q_memcmp(r->rguc_reserved, nullbuffer, sizeof(nullbuffer)))
 		{
 			uint32 hash = MSG_ReadBits(32);
-			if (g_RehldsHookchains.m_SV_CheckConsistencyResponse.callChain(SV_CheckConsistencyResponse_API, GetRehldsApiClient(pSenderClient), r, hash))
-				c = idx + 1;
+			differs = g_RehldsHookchains.m_SV_CheckConsistencyResponse.callChain(SV_CheckConsistencyResponse_API, pSenderClient->pGameClient, r, hash);
 		}
 		else
 		{
-			MSG_ReadBitData(cmins, 12);
-			MSG_ReadBitData(cmaxs, 12);
-			Q_memcpy(resbuffer, r->rguc_reserved, sizeof(resbuffer));
-			COM_UnMunge(resbuffer, sizeof(resbuffer), g_psvs.spawncount);
-			FORCE_TYPE ft = (FORCE_TYPE)resbuffer[0];
-			if (ft == force_model_samebounds)
-			{
-				Q_memcpy(mins, &resbuffer[1], 12);
-				Q_memcpy(maxs, &resbuffer[13], 12);
-				if (!VectorCompare(cmins, mins) || !VectorCompare(cmaxs, maxs))
-					c = idx + 1;
-			}
-			else if (ft == force_model_specifybounds)
-			{
-				Q_memcpy(mins, &resbuffer[1], 12);
-				Q_memcpy(maxs, &resbuffer[13], 12);
-				for (int i = 0; i < 3; i++)
-				{
-					if (cmins[i] < mins[i] || cmaxs[i] > maxs[i])
-					{
-						c = idx + 1;
-						break;
-					}
-				}
-			}
-			else if (ft == force_model_specifybounds_if_avail)
-			{
-				Q_memcpy(mins, &resbuffer[1], 12);
-				Q_memcpy(maxs, &resbuffer[13], 12);
-				if (cmins[0] != -1.0 || cmins[1] != -1.0 || cmins[2] != -1.0 || cmaxs[0] != -1.0 || cmaxs[1] != -1.0 || cmaxs[2] != -1.0)
-				{
-					for (int i = 0; i < 3; i++)
-					{
-						if (cmins[i] < mins[i] || cmaxs[i] > maxs[i])
-						{
-							c = idx + 1;
-							break;
-						}
-					}
-				}
-			}
-			else
-			{
-				msg_badread = 1;
-				c = idx + 1;
-				break;
-			}
-
+			differs = SV_ReadModelBoundsResponse(r);
 		}
+
+		if (differs)
+			dropclient = idx + 1;
 
 		if (msg_badread)
 			break;
 
-		++length;
+		++count;
 	}
 
 	MSG_EndBitReading(&net_message);
-	if (c < 0 || length != g_psv.num_consistency)
+
+	if (dropclient < 0 || count != g_psv.num_consistency)
 	{
-		msg_badread = 1;
+		msg_badread = TRUE;
 		Con_Printf("SV_ParseConsistencyResponse:  %s:%s sent bad file data\n", host_client->name, NET_AdrToString(host_client->netchan.remote_address));
 		SV_DropClient(host_client, FALSE, "Bad file data");
 		return;
 	}
 
-	if (c > 0)
+	if (dropclient > 0)
 	{
-		char dropmessage[256];
-#ifdef REHLDS_FIXES
-		dropmessage[0] = '\0';
+		const char *filename = resources[dropclient - 1].szFileName;
+		char dropmessage[256]{};
 
-		if (gEntityInterface.pfnInconsistentFile(host_client->edict, g_rehlds_sv.resources[c - 1].szFileName, dropmessage))
+#ifdef REHLDS_FIXES
+		if (gEntityInterface.pfnInconsistentFile(host_client->edict, filename, dropmessage))
 		{
 			if (dropmessage[0])
 				SV_ClientPrintf("%s", dropmessage);
 
-			SV_DropClient(host_client, FALSE, "Bad file %s", g_rehlds_sv.resources[c - 1].szFileName); // only filename. reason was printed in console if exists.
+			SV_DropClient(host_client, FALSE, "Bad file %s", filename); // only filename. reason was printed in console if exists.
 			return;
 		}
 #else // REHLDS_FIXES
-		if (gEntityInterface.pfnInconsistentFile(host_client->edict, g_psv.resourcelist[c - 1].szFileName, dropmessage))
+		if (gEntityInterface.pfnInconsistentFile(host_client->edict, filename, dropmessage))
 		{
 			if (Q_strlen(dropmessage) > 0)
 				SV_ClientPrintf("%s", dropmessage);
@@ -233,18 +249,22 @@ qboolean EXT_FUNC SV_FileInConsistencyList(const char *filename, consistency_t *
 {
 	for (int i = 0; i < ARRAYSIZE(g_psv.consistency_list); i++)
 	{
-		if (!g_psv.consistency_list[i].filename)
-			return 0;
+		consistency_t &entry = g_psv.consistency_list[i];
 
-		if (!Q_stricmp(filename, g_psv.consistency_list[i].filename))
+		// the list ends with the first empty record
+		if (!entry.filename)
+			return FALSE;
+
+		if (!Q_stricmp(filename, entry.filename))
 		{
 			if (ppconsist)
-				*ppconsist = &g_psv.consistency_list[i];
-			return 1;
+				*ppconsist = &entry;
+
+			return TRUE;
 		}
 	}
 
-	return 0;
+	return FALSE;
 }
 
 int SV_TransferConsistencyInfo(void)
@@ -252,75 +272,78 @@ int SV_TransferConsistencyInfo(void)
 	return g_RehldsHookchains.m_SV_TransferConsistencyInfo.callChain(SV_TransferConsistencyInfo_internal);
 }
 
+// Stores the bounds requirement of a model resource in its reserved block, scrambled for the wire.
+// Types without bounds leave the block untouched.
+void SV_SetupModelConsistency(resource_t *r, const consistency_t *pc, const char *filename)
+{
+	if (pc->check_type == force_model_samebounds)
+	{
+		vec3_t mins;
+		vec3_t maxs;
+
+		if (!R_GetStudioBounds(filename, mins, maxs))
+			Host_Error("%s: Server unable to get bounds for %s\n", __func__, filename);
+
+		SV_SetConsistencyBounds(r->rguc_reserved, mins, maxs);
+	}
+	else if (pc->check_type == force_model_specifybounds || pc->check_type == force_model_specifybounds_if_avail)
+	{
+		SV_SetConsistencyBounds(r->rguc_reserved, pc->mins, pc->maxs);
+	}
+	else
+	{
+		return;
+	}
+
+	r->rguc_reserved[0] = pc->check_type;
+	COM_Munge(r->rguc_reserved, sizeof(r->rguc_reserved), g_psvs.spawncount);
+}
+
 int EXT_FUNC SV_TransferConsistencyInfo_internal(void)
 {
-	consistency_t *pc;
+	resource_t *resources = SV_GetResourceList();
 
-	int c = 0;
+	int count = 0;
 	for (int i = 0; i < g_psv.num_resources; i++)
 	{
-#ifdef REHLDS_FIXES
-		resource_t *r = &g_rehlds_sv.resources[i];
-#else // REHLDS_FIXES
-		resource_t *r = &g_psv.resourcelist[i];
-#endif // REHLDS_FIXES
+		resource_t *r = &resources[i];
 		if (r->ucFlags == (RES_CUSTOM | RES_REQUESTED | RES_UNK_6) || (r->ucFlags & RES_CHECKFILE))
 			continue;
 
+		consistency_t *pc;
 		if (!SV_FileInConsistencyList(r->szFileName, &pc))
 			continue;
 
 		r->ucFlags |= RES_CHECKFILE;
 
 		char filename[MAX_PATH];
-		if (r->type != t_sound)
+		if (r->type == t_sound)
 		{
-			Q_strncpy(filename, r->szFileName, MAX_PATH - 1);
-			filename[MAX_PATH - 1] = 0;
+			Q_snprintf(filename, MAX_PATH, "sound/%s", r->szFileName);
 		}
 		else
 		{
-			Q_snprintf(filename, MAX_PATH, "sound/%s", r->szFileName);
+			Q_strlcpy(filename, r->szFileName);
 		}
 		MD5_Hash_File(r->rgucMD5_hash, filename, FALSE, FALSE, NULL);
 
 		if (r->type == t_model)
-		{
-			if (pc->check_type == force_model_samebounds)
-			{
-				vec3_t mins;
-				vec3_t maxs;
+			SV_SetupModelConsistency(r, pc, filename);
 
-				if (!R_GetStudioBounds(filename, mins, maxs))
-					Host_Error("%s: Server unable to get bounds for %s\n", __func__, filename);
-
-				Q_memcpy(&r->rguc_reserved[1], mins, sizeof(mins));
-				Q_memcpy(&r->rguc_reserved[13], maxs, sizeof(maxs));
-			}
-			else if (pc->check_type == force_model_specifybounds || pc->check_type == force_model_specifybounds_if_avail)
-			{
-				Q_memcpy(&r->rguc_reserved[1], pc->mins, sizeof(pc->mins));
-				Q_memcpy(&r->rguc_reserved[13], pc->maxs, sizeof(pc->maxs));
-			}
-			else
-			{
-				++c;
-				continue;
-			}
-			r->rguc_reserved[0] = pc->check_type;
-			COM_Munge(r->rguc_reserved, 32, g_psvs.spawncount);
-		}
-		++c;
+		++count;
 	}
-	return c;
+
+	return count;
 }
 
+// Consistency data goes only to the real clients of a multiplayer server,
+// and only when mp_consistency is on or the caller forces it
 bool EXT_FUNC SV_ShouldSendConsistencyList_mod(IGameClient *cl, bool forceConsistency)
 {
 	if (g_psvs.maxclients == 1 || g_psv.num_consistency == 0 || cl->IsProxy())
 		return false;
 
-	if (!forceConsistency && mp_consistency.value == 0.0f)
+	if (!forceConsistency && !mp_consistency.value)
 		return false;
 
 	return true;
@@ -328,9 +351,11 @@ bool EXT_FUNC SV_ShouldSendConsistencyList_mod(IGameClient *cl, bool forceConsis
 
 bool SV_ShouldSendConsistencyList(client_t *client, bool forceConsistency)
 {
-	return g_RehldsHookchains.m_SV_ShouldSendConsistencyList.callChain(SV_ShouldSendConsistencyList_mod, GetRehldsApiClient(client), forceConsistency);
+	return g_RehldsHookchains.m_SV_ShouldSendConsistencyList.callChain(SV_ShouldSendConsistencyList_mod, client->pGameClient, forceConsistency);
 }
 
+// Sends the indices of the resources the client must check.
+// Each index is the distance from the previous one when it fits 5 bits, otherwise the absolute value in 10 bits.
 void SV_SendConsistencyList(sizebuf_t *msg)
 {
 	host_client->has_force_unmodified = FALSE;
@@ -343,37 +368,32 @@ void SV_SendConsistencyList(sizebuf_t *msg)
 
 	host_client->has_force_unmodified = TRUE;
 
-	int delta = 0;
-	int lastcheck = 0;
-#ifdef REHLDS_FIXES
-	resource_t *r = g_rehlds_sv.resources;
-#else // REHLDS_FIXES
-	resource_t *r = g_psv.resourcelist;
-#endif // REHLDS_FIXES
-
 	MSG_WriteBits(1, 1);
 
-	for (int i = 0; i < g_psv.num_resources; i++, r++)
+	const resource_t *resources = SV_GetResourceList();
+	int lastcheck = 0;
+
+	for (int i = 0; i < g_psv.num_resources; i++)
 	{
-		if (r && (r->ucFlags & RES_CHECKFILE) != 0)
+		if (!(resources[i].ucFlags & RES_CHECKFILE))
+			continue;
+
+		MSG_WriteBits(1, 1);
+
+		int delta = i - lastcheck;
+		if (delta > 31)
 		{
-			MSG_WriteBits(1, 1);
-			delta = i - lastcheck;
-
-			if (delta > 31)
-			{
-				MSG_WriteBits(0, 1);
-				MSG_WriteBits(i, 10);	// LIMIT: Here it write index, not a diff, with resolution of 10 bits. So, it limits not adjacent index to 1023 max.
-			}
-			else
-			{
-				// Write 5 bits index delta, so it is up to 31
-				MSG_WriteBits(1, 1);
-				MSG_WriteBits(delta, 5);
-			}
-
-			lastcheck = i;
+			MSG_WriteBits(0, 1);
+			MSG_WriteBits(i, 10);	// LIMIT: Here it write index, not a diff, with resolution of 10 bits. So, it limits not adjacent index to 1023 max.
 		}
+		else
+		{
+			// Write 5 bits index delta, so it is up to 31
+			MSG_WriteBits(1, 1);
+			MSG_WriteBits(delta, 5);
+		}
+
+		lastcheck = i;
 	}
 
 	MSG_WriteBits(0, 1);
@@ -383,17 +403,14 @@ void SV_PreRunCmd(void)
 {
 }
 
+// Copies the state of an edict that the player movement code needs
 void SV_CopyEdictToPhysent(physent_t *pe, int e, edict_t *check)
 {
-	model_t *pModel;
-
-	pe->origin[0] = check->v.origin[0];
-	pe->origin[1] = check->v.origin[1];
-	pe->origin[2] = check->v.origin[2];
+	VectorCopy(check->v.origin, pe->origin);
 
 	pe->info = e;
 
-	if (e < 1 || e > g_psvs.maxclients)
+	if (e <= 0 || e > g_psvs.maxclients)
 	{
 		pe->player = 0;
 	}
@@ -403,76 +420,60 @@ void SV_CopyEdictToPhysent(physent_t *pe, int e, edict_t *check)
 		pe->player = pe->info;
 	}
 
-	pe->angles[0] = check->v.angles[0];
-	pe->angles[1] = check->v.angles[1];
-	pe->angles[2] = check->v.angles[2];
+	VectorCopy(check->v.angles, pe->angles);
 
 	pe->studiomodel = nullptr;
 	pe->rendermode = check->v.rendermode;
 
-	if (check->v.solid == SOLID_BSP)
+	switch (check->v.solid)
 	{
+	case SOLID_BSP:
 		pe->model = g_psv.models[check->v.modelindex];
-		Q_strncpy(pe->name, pe->model->name, sizeof(pe->name) - 1);
-		pe->name[sizeof(pe->name) - 1] = 0;
-	}
-	else if (check->v.solid == SOLID_NOT)
-	{
+		Q_strlcpy(pe->name, pe->model->name);
+		break;
+
+	case SOLID_NOT:
 		if (check->v.modelindex)
 		{
 			pe->model = g_psv.models[check->v.modelindex];
-			Q_strncpy(pe->name, pe->model->name, sizeof(pe->name) - 1);
-			pe->name[sizeof(pe->name) - 1] = 0;
+			Q_strlcpy(pe->name, pe->model->name);
 		}
 		else
 		{
 			pe->model = nullptr;
 		}
-	}
-	else
-	{
+		break;
+
+	case SOLID_BBOX:
 		pe->model = nullptr;
-		if (check->v.solid != SOLID_BBOX)
-		{
-			pe->mins[0] = check->v.mins[0];
-			pe->mins[1] = check->v.mins[1];
-			pe->maxs[0] = check->v.maxs[0];
-			pe->mins[2] = check->v.mins[2];
-			pe->maxs[1] = check->v.maxs[1];
-			pe->maxs[2] = check->v.maxs[2];
 
-			if (check->v.classname)
+		if (check->v.modelindex)
+		{
+			model_t *pModel = g_psv.models[check->v.modelindex];
+			if (pModel)
 			{
-				Q_strncpy(pe->name, &pr_strings[check->v.classname], sizeof(pe->name) - 1);
-				pe->name[sizeof(pe->name) - 1] = 0;
-			}
-			else
-			{
-				Q_sprintf(pe->name, "?");
+				if (pModel->flags & STUDIO_TRACE_HITBOX)
+					pe->studiomodel = pModel;
+
+				Q_strlcpy(pe->name, pModel->name);
 			}
 		}
+
+		VectorCopy(check->v.mins, pe->mins);
+		VectorCopy(check->v.maxs, pe->maxs);
+		break;
+
+	default:
+		pe->model = nullptr;
+
+		VectorCopy(check->v.mins, pe->mins);
+		VectorCopy(check->v.maxs, pe->maxs);
+
+		if (check->v.classname)
+			Q_strlcpy(pe->name, &pr_strings[check->v.classname]);
 		else
-		{
-			if (check->v.modelindex)
-			{
-				pModel = g_psv.models[check->v.modelindex];
-				if (pModel)
-				{
-					if (pModel->flags & STUDIO_TRACE_HITBOX)
-						pe->studiomodel = pModel;
-
-					Q_strncpy(pe->name, pModel->name, sizeof(pe->name) - 1);
-					pe->name[sizeof(pe->name) - 1] = 0;
-				}
-			}
-
-			pe->mins[0] = check->v.mins[0];
-			pe->mins[1] = check->v.mins[1];
-			pe->mins[2] = check->v.mins[2];
-			pe->maxs[0] = check->v.maxs[0];
-			pe->maxs[1] = check->v.maxs[1];
-			pe->maxs[2] = check->v.maxs[2];
-		}
+			Q_sprintf(pe->name, "?");
+		break;
 	}
 
 	pe->skin = check->v.skin;
@@ -493,103 +494,101 @@ void SV_CopyEdictToPhysent(physent_t *pe, int e, edict_t *check)
 	pe->fuser3 = check->v.fuser3;
 	pe->fuser4 = check->v.fuser4;
 
-	pe->vuser1[0] = check->v.vuser1[0];
-	pe->vuser1[1] = check->v.vuser1[1];
-	pe->vuser1[2] = check->v.vuser1[2];
-	pe->vuser2[0] = check->v.vuser2[0];
-	pe->vuser2[1] = check->v.vuser2[1];
-	pe->vuser2[2] = check->v.vuser2[2];
-	pe->vuser3[0] = check->v.vuser3[0];
-	pe->vuser3[1] = check->v.vuser3[1];
-	pe->vuser3[2] = check->v.vuser3[2];
+	VectorCopy(check->v.vuser1, pe->vuser1);
+	VectorCopy(check->v.vuser2, pe->vuser2);
+	VectorCopy(check->v.vuser3, pe->vuser3);
+	VectorCopy(check->v.vuser4, pe->vuser4);
 
-	pe->takedamage = 0;
+	pe->takedamage = DAMAGE_NO;
 	pe->blooddecal = 0;
-
-	pe->vuser4[0] = check->v.vuser4[0];
-	pe->vuser4[1] = check->v.vuser4[1];
-	pe->vuser4[2] = check->v.vuser4[2];
 }
 
-bool EXT_FUNC SV_AllowPhysent_mod(edict_t* check, edict_t* sv_player) {
+bool EXT_FUNC SV_AllowPhysent_mod(edict_t* check, edict_t* sv_player)
+{
 	return true;
 }
 
-bool SV_AllowPhysent(edict_t* check, edict_t* sv_player) {
+bool SV_AllowPhysent(edict_t* check, edict_t* sv_player)
+{
 	return g_RehldsHookchains.m_SV_AllowPhysent.callChain(SV_AllowPhysent_mod, check, sv_player);
+}
+
+// The edict is hidden from the player by the group filter
+bool SV_IsFilteredByGroup(edict_t *check)
+{
+	if (!check->v.groupinfo)
+		return false;
+
+	bool shared = (check->v.groupinfo & sv_player->v.groupinfo) != 0;
+
+	if (g_groupop)
+		return g_groupop == GROUP_OP_NAND && shared;
+
+	return !shared;
+}
+
+// The visible edict takes part in the collisions of the player movement
+bool SV_IsCollidableInPM(edict_t *check, int e, float *pmove_mins, float *pmove_maxs)
+{
+	if (check->v.solid == SOLID_NOT && (!check->v.skin || !check->v.modelindex))
+		return false;
+
+	if ((check->v.flags & FL_MONSTERCLIP) && check->v.solid == SOLID_BSP)
+		return false;
+
+	if (check == sv_player)
+		return false;
+
+	if ((check->v.flags & FL_CLIENT) && check->v.health <= 0.0)
+		return false;
+
+	if (check->v.mins[2] == 0.0 && check->v.maxs[2] == 1.0)
+		return false;
+
+	if (Length(check->v.size) == 0.0)
+		return false;
+
+	float *fmin = check->v.absmin;
+	float *fmax = check->v.absmax;
+	if (check->v.flags & FL_CLIENT)
+		SV_GetTrueMinMax(e - 1, &fmin, &fmax);
+
+	return BoundsIntersect(pmove_mins, pmove_maxs, fmin, fmax);
 }
 
 void SV_AddLinksToPM_(areanode_t *node, float *pmove_mins, float *pmove_maxs)
 {
-	struct link_s *l;
-	edict_t *check;
-	int e;
-	physent_t *ve;
 	link_t *next;
-	float *fmax;
-	float *fmin;
-	physent_t *pe;
 
-	for (l = node->solid_edicts.next; l != &node->solid_edicts; l = next)
+	for (link_t *l = node->solid_edicts.next; l != &node->solid_edicts; l = next)
 	{
-		check = (edict_t *)&l[-1];
+		edict_t *check = (edict_t *)&l[-1];
 		next = l->next;
-		if (check->v.groupinfo)
-		{
-			if (g_groupop)
-			{
-				if (g_groupop == GROUP_OP_NAND && (check->v.groupinfo & sv_player->v.groupinfo))
-					continue;
-			}
-			else
-			{
-				if (!(check->v.groupinfo & sv_player->v.groupinfo))
-					continue;
-			}
-		}
+
+		if (SV_IsFilteredByGroup(check))
+			continue;
 
 		if (check->v.owner == sv_player)
 			continue;
 
-		if (check->v.solid != SOLID_BSP && check->v.solid != SOLID_BBOX && check->v.solid != SOLID_SLIDEBOX && check->v.solid != SOLID_NOT)
+		if (check->v.solid != SOLID_BSP &&
+			check->v.solid != SOLID_BBOX &&
+			check->v.solid != SOLID_SLIDEBOX &&
+			check->v.solid != SOLID_NOT)
 			continue;
 
 		// Apply our own custom checks
-		if (!SV_AllowPhysent(check, sv_player)) {
+		if (!SV_AllowPhysent(check, sv_player))
 			continue;
-		}
 
-		e = NUM_FOR_EDICT(check);
-		ve = &pmove->visents[pmove->numvisent];
-		pmove->numvisent = pmove->numvisent + 1;
+		int e = NUM_FOR_EDICT(check);
+		physent_t *ve = &pmove->visents[pmove->numvisent++];
 		SV_CopyEdictToPhysent(ve, e, check);
 
-		if ((check->v.solid == SOLID_NOT) && (!check->v.skin || !check->v.modelindex))
+		if (!SV_IsCollidableInPM(check, e, pmove_mins, pmove_maxs))
 			continue;
 
-		if ((check->v.flags & FL_MONSTERCLIP) && check->v.solid == SOLID_BSP)
-			continue;
-
-		if (check == sv_player)
-			continue;
-
-		if ((check->v.flags & FL_CLIENT) && check->v.health <= 0.0)
-			continue;
-
-		if (check->v.mins[2] == 0.0 && check->v.maxs[2] == 1.0)
-			continue;
-
-		if (Length(check->v.size) == 0.0)
-			continue;
-
-		fmin = check->v.absmin;
-		fmax = check->v.absmax;
-		if (check->v.flags & FL_CLIENT)
-			SV_GetTrueMinMax(e - 1, &fmin, &fmax);
-
-		if (!BoundsIntersect(pmove_mins, pmove_maxs, fmin, fmax))
-			continue;
-
+		physent_t *pe;
 		if (check->v.solid || check->v.skin != -16)
 		{
 			if (pmove->numphysent >= MAX_PHYSENTS)
@@ -622,37 +621,44 @@ void SV_AddLinksToPM_(areanode_t *node, float *pmove_mins, float *pmove_maxs)
 	}
 }
 
+// Builds the lists of entities within reach of the player: the world first, then the solid edicts of the area tree
 void SV_AddLinksToPM(areanode_t *node, vec_t *origin)
 {
-	vec3_t pmove_mins;
-	vec3_t pmove_maxs;
+	const float reach = 256.0f;
 
-	Q_memset(&pmove->physents[0], 0, sizeof(physent_t));
-	Q_memset(&pmove->visents[0], 0, sizeof(physent_t));
+	physent_t *pe = &pmove->physents[WORLD_ID];
+	physent_t *ve = &pmove->visents[WORLD_ID];
 
-	pmove->physents[0].model = g_psv.worldmodel;
-	if (g_psv.worldmodel != NULL)
+	Q_memset(pe, 0, sizeof(*pe));
+	Q_memset(ve, 0, sizeof(*ve));
+
+	// Assign world model
+	pe->model = g_psv.worldmodel;
+	if (pe->model)
 	{
-		Q_strncpy(pmove->physents[0].name, g_psv.worldmodel->name, sizeof(pmove->physents[0].name) - 1);
-		pmove->physents[0].name[sizeof(pmove->physents[0].name) - 1] = 0;
+		Q_strlcpy(pe->name, pe->model->name);
 	}
-	pmove->physents[0].origin[0] = vec3_origin[0];
-	pmove->physents[0].origin[1] = vec3_origin[1];
-	pmove->physents[0].origin[2] = vec3_origin[2];
-	pmove->physents[0].info = 0;
-	pmove->physents[0].solid = 4;
-	pmove->physents[0].movetype = 0;
-	pmove->physents[0].takedamage = 1;
-	pmove->physents[0].blooddecal = 0;
+
+	// setup physents
 	pmove->numphysent = 1;
 	pmove->numvisent = 1;
-	pmove->visents[0] = pmove->physents[0];
 	pmove->nummoveent = 0;
+
+	pe->info = 0;
+	pe->solid = SOLID_BSP;
+	pe->movetype = MOVETYPE_NONE;
+	pe->takedamage = DAMAGE_YES;
+	pe->blooddecal = 0;
+
+	*ve = *pe;
+
+	vec3_t pmove_mins, pmove_maxs;
 	for (int i = 0; i < 3; i++)
 	{
-		pmove_mins[i] = origin[i] - 256.0f;
-		pmove_maxs[i] = origin[i] + 256.0f;
+		pmove_mins[i] = origin[i] - reach;
+		pmove_maxs[i] = origin[i] + reach;
 	}
+
 	SV_AddLinksToPM_(node, pmove_mins, pmove_maxs);
 }
 
@@ -662,15 +668,15 @@ void SV_PlayerRunPreThink(edict_t *player, float time)
 	gEntityInterface.pfnPlayerPreThink(player);
 }
 
+// Runs the think function of the player entity when its time has come.
+// Returns false when the entity has been freed.
 qboolean SV_PlayerRunThink(edict_t *ent, float frametime, double clienttimebase)
 {
-	float thinktime;
-
 	if (!(ent->v.flags & (FL_DORMANT | FL_KILLME)))
 	{
-		thinktime = ent->v.nextthink;
+		float thinktime = ent->v.nextthink;
 		if (thinktime <= 0.0 || frametime + clienttimebase < thinktime)
-			return 1;
+			return TRUE;
 
 		if (thinktime < clienttimebase)
 			thinktime = (float)clienttimebase;
@@ -686,24 +692,19 @@ qboolean SV_PlayerRunThink(edict_t *ent, float frametime, double clienttimebase)
 	return ent->free == 0;
 }
 
+// Applies the speed of a conveyor under the player to its base velocity
 void SV_CheckMovingGround(edict_t *ent, float frametime)
 {
-	edict_t *groundentity;
-
-	if (ent->v.flags & FL_ONGROUND)
+	if ((ent->v.flags & FL_ONGROUND) && ent->v.groundentity && (ent->v.groundentity->v.flags & FL_CONVEYOR))
 	{
-		groundentity = ent->v.groundentity;
-		if (groundentity)
-		{
-			if (groundentity->v.flags & FL_CONVEYOR)
-			{
-				if (ent->v.flags & FL_BASEVELOCITY)
-					VectorMA(ent->v.basevelocity, groundentity->v.speed, groundentity->v.movedir, ent->v.basevelocity);
-				else
-					VectorScale(groundentity->v.movedir, groundentity->v.speed, ent->v.basevelocity);
-				ent->v.flags |= FL_BASEVELOCITY;
-			}
-		}
+		edict_t *groundentity = ent->v.groundentity;
+
+		if (ent->v.flags & FL_BASEVELOCITY)
+			VectorMA(ent->v.basevelocity, groundentity->v.speed, groundentity->v.movedir, ent->v.basevelocity);
+		else
+			VectorScale(groundentity->v.movedir, groundentity->v.speed, ent->v.basevelocity);
+
+		ent->v.flags |= FL_BASEVELOCITY;
 	}
 
 	if (!(ent->v.flags & FL_BASEVELOCITY))
@@ -722,17 +723,14 @@ void SV_ConvertPMTrace(trace_t *dest, pmtrace_t *src, edict_t *ent)
 	dest->inopen = src->inopen;
 	dest->inwater = src->inwater;
 	dest->fraction = src->fraction;
-	dest->endpos[0] = src->endpos[0];
-	dest->endpos[1] = src->endpos[1];
-	dest->endpos[2] = src->endpos[2];
-	dest->plane.normal[0] = src->plane.normal[0];
-	dest->plane.normal[1] = src->plane.normal[1];
-	dest->plane.normal[2] = src->plane.normal[2];
+	VectorCopy(src->endpos, dest->endpos);
+	VectorCopy(src->plane.normal, dest->plane.normal);
 	dest->plane.dist = src->plane.dist;
 	dest->hitgroup = src->hitgroup;
 	dest->ent = ent;
 }
 
+// Sends the current state of every client to the one that is being processed
 void SV_ForceFullClientsUpdate(void)
 {
 	byte data[9216];
@@ -746,7 +744,7 @@ void SV_ForceFullClientsUpdate(void)
 
 	for (int i = 0; i < g_psvs.maxclients; ++i)
 	{
-		client_t * client = &g_psvs.clients[i];
+		client_t *client = &g_psvs.clients[i];
 		if (client == host_client || client->active || client->connected || client->spawned)
 			SV_FullClientUpdate(client, &msg);
 	}
@@ -756,25 +754,166 @@ void SV_ForceFullClientsUpdate(void)
 	Netchan_FragSend(&host_client->netchan);
 }
 
-double TimeDifference(uint64_t start, uint64_t end)
+// Fills the player movement state from the entity and the command
+void SV_SetupPMove(playermove_t *ppmove, client_t *client, edict_t *ent, const usercmd_t *cmd, float frametime)
 {
-	if (end > start)
+	ppmove->server = TRUE;
+	ppmove->multiplayer = (g_psvs.maxclients > 1) ? TRUE : FALSE;
+	ppmove->time = (float)(1000.0 * client->svtimebase);
+	ppmove->usehull = (ent->v.flags & FL_DUCKING) == FL_DUCKING;
+	ppmove->maxspeed = sv_maxspeed.value;
+	ppmove->clientmaxspeed = ent->v.maxspeed;
+	ppmove->flDuckTime = (float)ent->v.flDuckTime;
+	ppmove->bInDuck = ent->v.bInDuck;
+	ppmove->flTimeStepSound = ent->v.flTimeStepSound;
+	ppmove->iStepLeft = ent->v.iStepLeft;
+	ppmove->flFallVelocity = ent->v.flFallVelocity;
+	ppmove->flSwimTime = (float)ent->v.flSwimTime;
+	ppmove->oldbuttons = ent->v.oldbuttons;
+
+	Q_strlcpy(ppmove->physinfo, client->physinfo);
+	VectorCopy(ent->v.velocity, ppmove->velocity);
+	VectorCopy(ent->v.movedir, ppmove->movedir);
+	VectorCopy(ent->v.v_angle, ppmove->angles);
+	VectorCopy(ent->v.basevelocity, ppmove->basevelocity);
+	VectorCopy(ent->v.view_ofs, ppmove->view_ofs);
+	VectorCopy(ent->v.punchangle, ppmove->punchangle);
+
+	ppmove->deadflag = ent->v.deadflag;
+	ppmove->effects = ent->v.effects;
+	ppmove->gravity = ent->v.gravity;
+	ppmove->friction = ent->v.friction;
+	ppmove->spectator = FALSE;
+	ppmove->waterjumptime = ent->v.teleport_time;
+
+	Q_memcpy(&ppmove->cmd, cmd, sizeof(ppmove->cmd));
+
+	ppmove->dead = ent->v.health <= 0.0 ? TRUE : FALSE;
+	ppmove->movetype = ent->v.movetype;
+	ppmove->flags = ent->v.flags;
+	ppmove->player_index = NUM_FOR_EDICT(ent) - 1;
+
+	ppmove->iuser1 = ent->v.iuser1;
+	ppmove->iuser2 = ent->v.iuser2;
+	ppmove->iuser3 = ent->v.iuser3;
+	ppmove->iuser4 = ent->v.iuser4;
+	ppmove->fuser1 = ent->v.fuser1;
+	ppmove->fuser2 = ent->v.fuser2;
+	ppmove->fuser3 = ent->v.fuser3;
+	ppmove->fuser4 = ent->v.fuser4;
+
+	VectorCopy(ent->v.vuser1, ppmove->vuser1);
+	VectorCopy(ent->v.vuser2, ppmove->vuser2);
+	VectorCopy(ent->v.vuser3, ppmove->vuser3);
+	VectorCopy(ent->v.vuser4, ppmove->vuser4);
+
+	VectorCopy(ent->v.origin, ppmove->origin);
+
+	SV_AddLinksToPM(sv_areanodes, ppmove->origin);
+
+	ppmove->runfuncs = TRUE;
+	ppmove->frametime = frametime;
+	ppmove->PM_PlaySound = PM_SV_PlaySound;
+	ppmove->PM_TraceTexture = PM_SV_TraceTexture;
+	ppmove->PM_PlaybackEventFull = PM_SV_PlaybackEventFull;
+}
+
+// Copies the result of the player movement back to the entity
+void SV_FinishPMove(playermove_t *ppmove, edict_t *ent)
+{
+	ent->v.deadflag = ppmove->deadflag;
+	ent->v.effects = ppmove->effects;
+	ent->v.teleport_time = ppmove->waterjumptime;
+	ent->v.waterlevel = ppmove->waterlevel;
+	ent->v.watertype = ppmove->watertype;
+	ent->v.flags = ppmove->flags;
+	ent->v.friction = ppmove->friction;
+	ent->v.movetype = ppmove->movetype;
+	ent->v.maxspeed = ppmove->clientmaxspeed;
+	ent->v.iStepLeft = ppmove->iStepLeft;
+
+	VectorCopy(ppmove->view_ofs, ent->v.view_ofs);
+	VectorCopy(ppmove->movedir, ent->v.movedir);
+	VectorCopy(ppmove->punchangle, ent->v.punchangle);
+
+	if (ppmove->onground == -1)
 	{
-		return (end - start) / 1000.0;
+		ent->v.flags &= ~FL_ONGROUND;
 	}
 	else
 	{
-		return ((start - end) / 1000.0) * -1.0;
+		ent->v.flags |= FL_ONGROUND;
+		ent->v.groundentity = EDICT_NUM(ppmove->physents[ppmove->onground].info);
 	}
+
+	VectorCopy(ppmove->origin, ent->v.origin);
+	VectorCopy(ppmove->velocity, ent->v.velocity);
+	VectorCopy(ppmove->basevelocity, ent->v.basevelocity);
+
+	// The model shows a 1/3 the pitch and the whole yaw and roll
+	if (ent->v.fixangle == FIXANGLE_NONE)
+	{
+		VectorCopy(ppmove->angles, ent->v.v_angle);
+		ent->v.angles[0] = (float)(-ppmove->angles[0] / 3.0);
+		ent->v.angles[1] = ppmove->angles[1];
+		ent->v.angles[2] = ppmove->angles[2];
+	}
+
+	ent->v.bInDuck = ppmove->bInDuck;
+	ent->v.flDuckTime = (int)ppmove->flDuckTime;
+	ent->v.flTimeStepSound = ppmove->flTimeStepSound;
+	ent->v.flFallVelocity = ppmove->flFallVelocity;
+	ent->v.flSwimTime = (int)ppmove->flSwimTime;
+	ent->v.oldbuttons = ppmove->cmd.buttons;
+
+	ent->v.iuser1 = ppmove->iuser1;
+	ent->v.iuser2 = ppmove->iuser2;
+	ent->v.iuser3 = ppmove->iuser3;
+	ent->v.iuser4 = ppmove->iuser4;
+	ent->v.fuser1 = ppmove->fuser1;
+	ent->v.fuser2 = ppmove->fuser2;
+	ent->v.fuser3 = ppmove->fuser3;
+	ent->v.fuser4 = ppmove->fuser4;
+
+	VectorCopy(ppmove->vuser1, ent->v.vuser1);
+	VectorCopy(ppmove->vuser2, ent->v.vuser2);
+	VectorCopy(ppmove->vuser3, ent->v.vuser3);
+	VectorCopy(ppmove->vuser4, ent->v.vuser4);
+
+	SetMinMaxSize(ent, player_mins[ppmove->usehull], player_maxs[ppmove->usehull], 0);
 }
 
+// Relinks the player and runs the touch functions of everything it hit during the movement
+void SV_ProcessImpacts(client_t *client, edict_t *ent)
+{
+	if (!client->edict->v.solid)
+		return;
+
+	SV_LinkEdict(ent, TRUE);
+
+	// The velocity of every touch is applied temporarily
+	vec3_t oldvel;
+	VectorCopy(ent->v.velocity, oldvel);
+
+	for (int i = 0; i < pmove->numtouch; ++i)
+	{
+		pmtrace_t *tr = &pmove->touchindex[i];
+		edict_t *touch = EDICT_NUM(pmove->physents[tr->ent].info);
+
+		trace_t trace;
+		SV_ConvertPMTrace(&trace, tr, touch);
+
+		VectorCopy(tr->deltavelocity, ent->v.velocity);
+		SV_Impact(touch, ent, &trace);
+	}
+
+	VectorCopy(oldvel, ent->v.velocity);
+}
+
+// Runs a single movement command of the player
 void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fNetCmd, qboolean fChopped)
 {
 	usercmd_t cmd = *ucmd;
-	int i;
-	edict_t *ent;
-	trace_t trace;
-	float frametime;
 
 #ifdef REHLDS_FIXES
 	// client could disconnect during CheckLimits or game-DLL callbacks
@@ -788,7 +927,6 @@ void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fNetCmd, qboolean fCho
 		return;
 	}
 
-
 	host_client->ignorecmdtime = 0;
 
 #ifdef REHLDS_FIXES
@@ -801,6 +939,7 @@ void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fNetCmd, qboolean fCho
 	}
 #endif // REHLDS_FIXES
 
+	// Long commands are run in two halves
 	if (cmd.msec > 50)
 	{
 		cmd.msec = (byte)(ucmd->msec / 2.0);
@@ -817,146 +956,58 @@ void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fNetCmd, qboolean fCho
 #ifdef REHLDS_FIXES
 	if (sv_usercmd_custom_random_seed.value)
 	{
-		float fltTimeNow = float(Sys_FloatTime() * 1000.0);
-		random_seed = *reinterpret_cast<int *>((char *)&fltTimeNow);
+		float fltTimeNow = (float)(Sys_FloatTime() * 1000.0);
+		Q_memcpy(&random_seed, &fltTimeNow, sizeof(random_seed));
 	}
-#endif
+#endif // REHLDS_FIXES
 
 	gEntityInterface.pfnCmdStart(sv_player, ucmd, random_seed);
-	frametime = float(ucmd->msec * 0.001);
+
+	float frametime = (float)(ucmd->msec * 0.001);
 	host_client->svtimebase = frametime + host_client->svtimebase;
 	host_client->cmdtime = ucmd->msec / 1000.0 + host_client->cmdtime;
+
 	if (ucmd->impulse)
 	{
 		sv_player->v.impulse = ucmd->impulse;
 
-		// Disable fullupdate via impulse 204
+		// impulse 204 forces a full update only without REHLDS_FIXES
 #ifndef REHLDS_FIXES
 		if (ucmd->impulse == 204)
 			SV_ForceFullClientsUpdate();
 #endif // REHLDS_FIXES
 	}
-	sv_player->v.clbasevelocity[0] = 0;
-	sv_player->v.clbasevelocity[1] = 0;
-	sv_player->v.clbasevelocity[2] = 0;
+
+	VectorClear(sv_player->v.clbasevelocity);
+
 	sv_player->v.button = ucmd->buttons;
 #ifdef REHLDS_FIXES
 	sv_player->v.light_level = ucmd->lightlevel;
-#endif
+#endif // REHLDS_FIXES
+
 	SV_CheckMovingGround(sv_player, frametime);
-	pmove->oldangles[0] = sv_player->v.v_angle[0];
-	pmove->oldangles[1] = sv_player->v.v_angle[1];
-	pmove->oldangles[2] = sv_player->v.v_angle[2];
-	if (!sv_player->v.fixangle)
-	{
-		sv_player->v.v_angle[0] = ucmd->viewangles[0];
-		sv_player->v.v_angle[1] = ucmd->viewangles[1];
-		sv_player->v.v_angle[2] = ucmd->viewangles[2];
-	}
+
+	VectorCopy(sv_player->v.v_angle, pmove->oldangles);
+
+	// The game module can take over the view angles with fixangle
+	if (sv_player->v.fixangle == FIXANGLE_NONE)
+		VectorCopy(ucmd->viewangles, sv_player->v.v_angle);
+
 	SV_PlayerRunPreThink(sv_player, (float)host_client->svtimebase);
 	SV_PlayerRunThink(sv_player, frametime, host_client->svtimebase);
-	if (Length(sv_player->v.basevelocity) > 0.0)
-	{
-		sv_player->v.clbasevelocity[0] = sv_player->v.basevelocity[0];
-		sv_player->v.clbasevelocity[1] = sv_player->v.basevelocity[1];
-		sv_player->v.clbasevelocity[2] = sv_player->v.basevelocity[2];
-	}
 
-	pmove->server = TRUE;
-	pmove->multiplayer = (g_psvs.maxclients > 1) ? TRUE : FALSE;
-	pmove->time = float(1000.0 * host_client->svtimebase);
-	pmove->usehull = (sv_player->v.flags & FL_DUCKING) == FL_DUCKING;
-	pmove->maxspeed = sv_maxspeed.value;
-	pmove->clientmaxspeed = sv_player->v.maxspeed;
-	pmove->flDuckTime = (float)sv_player->v.flDuckTime;
-	pmove->bInDuck = sv_player->v.bInDuck;
-	pmove->flTimeStepSound = sv_player->v.flTimeStepSound;
-	pmove->iStepLeft = sv_player->v.iStepLeft;
-	pmove->flFallVelocity = sv_player->v.flFallVelocity;
-	pmove->flSwimTime = (float)sv_player->v.flSwimTime;
-	pmove->oldbuttons = sv_player->v.oldbuttons;
-
-	Q_strncpy(pmove->physinfo, host_client->physinfo, sizeof(pmove->physinfo) - 1);
-	pmove->physinfo[sizeof(pmove->physinfo) - 1] = 0;
-
-	pmove->velocity[0] = sv_player->v.velocity[0];
-	pmove->velocity[1] = sv_player->v.velocity[1];
-	pmove->velocity[2] = sv_player->v.velocity[2];
-
-	pmove->movedir[0] = sv_player->v.movedir[0];
-	pmove->movedir[1] = sv_player->v.movedir[1];
-	pmove->movedir[2] = sv_player->v.movedir[2];
-
-	pmove->angles[0] = sv_player->v.v_angle[0];
-	pmove->angles[1] = sv_player->v.v_angle[1];
-	pmove->angles[2] = sv_player->v.v_angle[2];
-
-	pmove->basevelocity[0] = sv_player->v.basevelocity[0];
-	pmove->basevelocity[1] = sv_player->v.basevelocity[1];
-	pmove->basevelocity[2] = sv_player->v.basevelocity[2];
-
-	pmove->view_ofs[0] = sv_player->v.view_ofs[0];
-	pmove->view_ofs[1] = sv_player->v.view_ofs[1];
-	pmove->view_ofs[2] = sv_player->v.view_ofs[2];
-
-	pmove->punchangle[0] = sv_player->v.punchangle[0];
-	pmove->punchangle[1] = sv_player->v.punchangle[1];
-	pmove->punchangle[2] = sv_player->v.punchangle[2];
-
-	pmove->deadflag = sv_player->v.deadflag;
-	pmove->effects = sv_player->v.effects;
-	pmove->gravity = sv_player->v.gravity;
-	pmove->friction = sv_player->v.friction;
-	pmove->spectator = 0;
-	pmove->waterjumptime = sv_player->v.teleport_time;
+	// A conveyor or the think function can set the base velocity, the client needs it as well
+	if (Length(sv_player->v.basevelocity) > 0)
+		VectorCopy(sv_player->v.basevelocity, sv_player->v.clbasevelocity);
 
 #ifdef REHLDS_FIXES
-	Q_memcpy(&pmove->cmd, ucmd, sizeof(pmove->cmd));
-#else
-	Q_memcpy(&pmove->cmd, &cmd, sizeof(pmove->cmd));
-#endif
+	const usercmd_t *pmcmd = ucmd;
+#else // REHLDS_FIXES
+	const usercmd_t *pmcmd = &cmd;
+#endif // REHLDS_FIXES
 
-	pmove->dead = sv_player->v.health <= 0.0;
-	pmove->movetype = sv_player->v.movetype;
-	pmove->flags = sv_player->v.flags;
-	pmove->player_index = NUM_FOR_EDICT(sv_player) - 1;
+	SV_SetupPMove(pmove, host_client, sv_player, pmcmd, frametime);
 
-	pmove->iuser1 = sv_player->v.iuser1;
-	pmove->iuser2 = sv_player->v.iuser2;
-	pmove->iuser3 = sv_player->v.iuser3;
-	pmove->iuser4 = sv_player->v.iuser4;
-	pmove->fuser1 = sv_player->v.fuser1;
-	pmove->fuser2 = sv_player->v.fuser2;
-	pmove->fuser3 = sv_player->v.fuser3;
-	pmove->fuser4 = sv_player->v.fuser4;
-
-	pmove->vuser1[0] = sv_player->v.vuser1[0];
-	pmove->vuser1[1] = sv_player->v.vuser1[1];
-	pmove->vuser1[2] = sv_player->v.vuser1[2];
-
-	pmove->vuser2[0] = sv_player->v.vuser2[0];
-	pmove->vuser2[1] = sv_player->v.vuser2[1];
-	pmove->vuser2[2] = sv_player->v.vuser2[2];
-
-	pmove->vuser3[0] = sv_player->v.vuser3[0];
-	pmove->vuser3[1] = sv_player->v.vuser3[1];
-	pmove->vuser3[2] = sv_player->v.vuser3[2];
-
-	pmove->vuser4[0] = sv_player->v.vuser4[0];
-	pmove->vuser4[1] = sv_player->v.vuser4[1];
-	pmove->vuser4[2] = sv_player->v.vuser4[2];
-
-	pmove->origin[0] = sv_player->v.origin[0];
-	pmove->origin[1] = sv_player->v.origin[1];
-	pmove->origin[2] = sv_player->v.origin[2];
-
-	SV_AddLinksToPM(sv_areanodes, pmove->origin);
-
-	pmove->frametime = frametime;
-	pmove->runfuncs = TRUE;
-	pmove->PM_PlaySound = PM_SV_PlaySound;
-	pmove->PM_TraceTexture = PM_SV_TraceTexture;
-	pmove->PM_PlaybackEventFull = PM_SV_PlaybackEventFull;
 	const movevars_t movevars = host_client->pGameClient->GetMoveVars(); // preserve current movevars
 	host_client->pGameClient->SetMoveVars(sv_movevars); // always use global movevars as a base
 	pmove->movevars = host_client->pGameClient->GetMoveVarsForPlayerMove();
@@ -967,116 +1018,8 @@ void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fNetCmd, qboolean fCho
 	if (!host_client->fakeclient && Q_memcmp(&movevars, pmove->movevars, sizeof(movevars)) != 0)
 		SV_WriteMovevarsToClient(&host_client->netchan.message, pmove->movevars); // sync movevars for the client
 
-	sv_player->v.deadflag = pmove->deadflag;
-	sv_player->v.effects = pmove->effects;
-	sv_player->v.teleport_time = pmove->waterjumptime;
-	sv_player->v.waterlevel = pmove->waterlevel;
-	sv_player->v.watertype = pmove->watertype;
-	sv_player->v.flags = pmove->flags;
-	sv_player->v.friction = pmove->friction;
-	sv_player->v.movetype = pmove->movetype;
-	sv_player->v.maxspeed = pmove->clientmaxspeed;
-	sv_player->v.iStepLeft = pmove->iStepLeft;
-
-	sv_player->v.view_ofs[0] = pmove->view_ofs[0];
-	sv_player->v.view_ofs[1] = pmove->view_ofs[1];
-	sv_player->v.view_ofs[2] = pmove->view_ofs[2];
-
-	sv_player->v.movedir[0] = pmove->movedir[0];
-	sv_player->v.movedir[1] = pmove->movedir[1];
-	sv_player->v.movedir[2] = pmove->movedir[2];
-
-	sv_player->v.punchangle[0] = pmove->punchangle[0];
-	sv_player->v.punchangle[1] = pmove->punchangle[1];
-	sv_player->v.punchangle[2] = pmove->punchangle[2];
-
-	if (pmove->onground == -1)
-	{
-		sv_player->v.flags &= ~FL_ONGROUND;
-	}
-	else
-	{
-		sv_player->v.flags |= FL_ONGROUND;
-		sv_player->v.groundentity = EDICT_NUM(pmove->physents[pmove->onground].info);
-	}
-
-	sv_player->v.origin[0] = pmove->origin[0];
-	sv_player->v.origin[1] = pmove->origin[1];
-	sv_player->v.origin[2] = pmove->origin[2];
-
-	sv_player->v.velocity[0] = pmove->velocity[0];
-	sv_player->v.velocity[1] = pmove->velocity[1];
-	sv_player->v.velocity[2] = pmove->velocity[2];
-
-	sv_player->v.basevelocity[0] = pmove->basevelocity[0];
-	sv_player->v.basevelocity[1] = pmove->basevelocity[1];
-	sv_player->v.basevelocity[2] = pmove->basevelocity[2];
-
-	if (!sv_player->v.fixangle)
-	{
-		sv_player->v.v_angle[0] = pmove->angles[0];
-		sv_player->v.v_angle[1] = pmove->angles[1];
-		sv_player->v.v_angle[2] = pmove->angles[2];
-		sv_player->v.angles[0] = float(-pmove->angles[0] / 3.0);
-		sv_player->v.angles[1] = pmove->angles[1];
-		sv_player->v.angles[2] = pmove->angles[2];
-	}
-
-	sv_player->v.bInDuck = pmove->bInDuck;
-	sv_player->v.flDuckTime = (int)pmove->flDuckTime;
-	sv_player->v.flTimeStepSound = pmove->flTimeStepSound;
-	sv_player->v.flFallVelocity = pmove->flFallVelocity;
-	sv_player->v.flSwimTime = (int)pmove->flSwimTime;
-	sv_player->v.oldbuttons = pmove->cmd.buttons;
-
-	sv_player->v.iuser1 = pmove->iuser1;
-	sv_player->v.iuser2 = pmove->iuser2;
-	sv_player->v.iuser3 = pmove->iuser3;
-	sv_player->v.iuser4 = pmove->iuser4;
-	sv_player->v.fuser1 = pmove->fuser1;
-	sv_player->v.fuser2 = pmove->fuser2;
-	sv_player->v.fuser3 = pmove->fuser3;
-	sv_player->v.fuser4 = pmove->fuser4;
-
-	sv_player->v.vuser1[0] = pmove->vuser1[0];
-	sv_player->v.vuser1[1] = pmove->vuser1[1];
-	sv_player->v.vuser1[2] = pmove->vuser1[2];
-
-	sv_player->v.vuser2[0] = pmove->vuser2[0];
-	sv_player->v.vuser2[1] = pmove->vuser2[1];
-	sv_player->v.vuser2[2] = pmove->vuser2[2];
-
-	sv_player->v.vuser3[0] = pmove->vuser3[0];
-	sv_player->v.vuser3[1] = pmove->vuser3[1];
-	sv_player->v.vuser3[2] = pmove->vuser3[2];
-
-	sv_player->v.vuser4[0] = pmove->vuser4[0];
-	sv_player->v.vuser4[1] = pmove->vuser4[1];
-	sv_player->v.vuser4[2] = pmove->vuser4[2];
-
-	SetMinMaxSize(sv_player, player_mins[pmove->usehull], player_maxs[pmove->usehull], 0);
-	if (host_client->edict->v.solid)
-	{
-		SV_LinkEdict(sv_player, TRUE);
-		vec3_t vel;
-
-		vel[0] = sv_player->v.velocity[0];
-		vel[1] = sv_player->v.velocity[1];
-		vel[2] = sv_player->v.velocity[2];
-		for (i = 0; i < pmove->numtouch; ++i)
-		{
-			pmtrace_t *tr = &pmove->touchindex[i];
-			ent = EDICT_NUM(pmove->physents[tr->ent].info);
-			SV_ConvertPMTrace(&trace, tr, ent);
-			sv_player->v.velocity[0] = tr->deltavelocity[0];
-			sv_player->v.velocity[1] = tr->deltavelocity[1];
-			sv_player->v.velocity[2] = tr->deltavelocity[2];
-			SV_Impact(ent, sv_player, &trace);
-		}
-		sv_player->v.velocity[0] = vel[0];
-		sv_player->v.velocity[1] = vel[1];
-		sv_player->v.velocity[2] = vel[2];
-	}
+	SV_FinishPMove(pmove, sv_player);
+	SV_ProcessImpacts(host_client, sv_player);
 
 	gGlobalVariables.time = (float)host_client->svtimebase;
 	gGlobalVariables.frametime = frametime;
@@ -1087,41 +1030,36 @@ void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fNetCmd, qboolean fCho
 		SV_RestoreMove(host_client);
 }
 
-int SV_ValidateClientCommand(char *pszCommand)
+// True for the commands the engine runs itself, false for the ones that go to the game module
+bool SV_ValidateClientCommand(char *pszCommand)
 {
-	const char *p;
-	int i = 0;
-
 	COM_Parse(pszCommand);
-	while ((p = clcommands[i]) != NULL)
+
+	for (int i = 0; clcommands[i] != NULL; i++)
 	{
-		if (!Q_stricmp(com_token, p))
-		{
-			return 1;
-		}
-		i++;
+		if (!Q_stricmp(com_token, clcommands[i]))
+			return true;
 	}
-	return 0;
+
+	return false;
 }
 
+// Average ping of the latest frames. It is 0 while the pings of the very latest ones scatter by more than 0.2 s.
 float SV_CalcClientTime(client_t *cl)
 {
-	float minping;
-	float maxping;
-	int backtrack;
-
-	float ping = 0.0;
-	int count = 0;
-	backtrack = (int)sv_unlagsamples.value;
-
+	int backtrack = (int)sv_unlagsamples.value;
 	if (backtrack < 1)
 		backtrack = 1;
 
-	if (backtrack >= (SV_UPDATE_BACKUP <= 16 ? SV_UPDATE_BACKUP : 16))
-		backtrack = (SV_UPDATE_BACKUP <= 16 ? SV_UPDATE_BACKUP : 16);
+	int maxsamples = min(SV_UPDATE_BACKUP, 16);
+	if (backtrack >= maxsamples)
+		backtrack = maxsamples;
 
 	if (backtrack <= 0)
 		return 0.0f;
+
+	float ping = 0.0f;
+	int count = 0;
 
 	for (int i = 0; i < backtrack; i++)
 	{
@@ -1136,11 +1074,12 @@ float SV_CalcClientTime(client_t *cl)
 	if (!count)
 		return 0.0f;
 
-	minping = 9999.0;
-	maxping = -9999.0;
 	ping /= count;
 
-	for (int i = 0; i < (SV_UPDATE_BACKUP <= 4 ? SV_UPDATE_BACKUP : 4); i++)
+	float minping = 9999.0f;
+	float maxping = -9999.0f;
+
+	for (int i = 0; i < min(SV_UPDATE_BACKUP, 4); i++)
 	{
 		client_frame_t *frame = &cl->frames[SV_UPDATE_MASK & (cl->netchan.incoming_acknowledged - i)];
 		if (frame->ping_time <= 0.0f)
@@ -1164,59 +1103,58 @@ void SV_ComputeLatency(client_t *cl)
 	cl->latency = SV_CalcClientTime(cl);
 }
 
+// A distance of more than 128 units on any axis is a teleport
 int SV_UnlagCheckTeleport(vec_t *v1, vec_t *v2)
 {
 	for (int i = 0; i < 3; i++)
 	{
 		if (fabs(v1[i] - v2[i]) > 128)
-			return 1;
+			return TRUE;
 	}
 
-	return 0;
+	return FALSE;
 }
 
-void SV_GetTrueOrigin(int player, vec_t *origin)
+// Position of a player that was moved by the lag compensation of the current client, NULL if it was not
+const sv_adjusted_positions_t *SV_GetMovedPosition(int player)
 {
 	if (!host_client->lw || !host_client->lc)
-		return;
+		return NULL;
 
-	if (sv_unlag.value == 0 || g_psvs.maxclients <= 1 || !host_client->active)
-		return;
+	if (!sv_unlag.value || g_psvs.maxclients <= 1 || !host_client->active)
+		return NULL;
 
 	if (player < 0 || player >= g_psvs.maxclients)
-		return;
+		return NULL;
 
-	if (truepositions[player].active && truepositions[player].needrelink)
-	{
-		origin[0] = truepositions[player].oldorg[0];
-		origin[1] = truepositions[player].oldorg[1];
-		origin[2] = truepositions[player].oldorg[2];
-	}
+	const sv_adjusted_positions_t *pos = &truepositions[player];
+	if (!pos->active || !pos->needrelink)
+		return NULL;
+
+	return pos;
 }
 
+// Origin of a player before the lag compensation moved it
+void SV_GetTrueOrigin(int player, vec_t *origin)
+{
+	const sv_adjusted_positions_t *pos = SV_GetMovedPosition(player);
+	if (pos)
+		VectorCopy(pos->oldorg, origin);
+}
+
+// Absolute bounds of a player before the lag compensation moved it
 void SV_GetTrueMinMax(int player, float **fmin, float **fmax)
 {
-	if (!host_client->lw || !host_client->lc)
+	const sv_adjusted_positions_t *pos = SV_GetMovedPosition(player);
+	if (!pos)
 		return;
 
-	if (sv_unlag.value == 0.0f || g_psvs.maxclients <= 1)
-		return;
-
-	if (!host_client->active || player < 0 || player >= g_psvs.maxclients)
-		return;
-
-	if (truepositions[player].active && truepositions[player].needrelink)
-	{
-		*fmin = truepositions[player].oldabsmin;
-		*fmax = truepositions[player].oldabsmax;
-	}
+	*fmin = (float *)pos->oldabsmin;
+	*fmax = (float *)pos->oldabsmax;
 }
 
 entity_state_t *SV_FindEntInPack(int index, packet_entities_t *pack)
 {
-	if (pack->num_entities <= 0)
-		return NULL;
-
 	for (int i = 0; i < pack->num_entities; i++)
 	{
 		if (pack->entities[i].number == index)
@@ -1226,187 +1164,171 @@ entity_state_t *SV_FindEntInPack(int index, packet_entities_t *pack)
 	return NULL;
 }
 
-void SV_SetupMove(client_t *_host_client)
+// The game module and the client allow positions to be rewound for this command
+bool SV_IsLagCompensationActive(client_t *client)
 {
-	struct client_s *cl;
-	float cl_interptime;
-	client_frame_t *nextFrame;
-	entity_state_t *state;
-	sv_adjusted_positions_t *pos;
-	float frac;
-	entity_state_t *pnextstate;
-	int i;
-	client_frame_t *frame;
-	vec3_t origin;
-	vec3_t delta;
-
-
-#ifdef REHLDS_FIXES
-	double targettime; // FP precision fix
-#else
-	float targettime;
-#endif // REHLDS_FIXES
-
-	Q_memset(truepositions, 0, sizeof(truepositions));
-	nofind = 1;
 	if (!gEntityInterface.pfnAllowLagCompensation())
-		return;
+		return false;
 
-	if (sv_unlag.value == 0.0f || !_host_client->lw || !_host_client->lc)
-		return;
+	if (!sv_unlag.value || g_psvs.maxclients <= 1)
+		return false;
 
-	if (g_psvs.maxclients <= 1 || !_host_client->active)
-		return;
+	return client->lw && client->lc && client->active;
+}
 
-	nofind = 0;
+// Remembers where the other players are right now
+void SV_SaveTruePositions(client_t *client)
+{
 	for (int i = 0; i < g_psvs.maxclients; i++)
 	{
-		cl = &g_psvs.clients[i];
-		if (cl == _host_client || !cl->active)
+		client_t *cl = &g_psvs.clients[i];
+		if (cl == client || !cl->active)
 			continue;
 
-		truepositions[i].oldorg[0] = cl->edict->v.origin[0];
-		truepositions[i].oldorg[1] = cl->edict->v.origin[1];
-		truepositions[i].oldorg[2] = cl->edict->v.origin[2];
-		truepositions[i].oldabsmin[0] = cl->edict->v.absmin[0];
-		truepositions[i].oldabsmin[1] = cl->edict->v.absmin[1];
-		truepositions[i].oldabsmin[2] = cl->edict->v.absmin[2];
-		truepositions[i].oldabsmax[0] = cl->edict->v.absmax[0];
-		truepositions[i].oldabsmax[1] = cl->edict->v.absmax[1];
-		truepositions[i].active = 1;
-		truepositions[i].oldabsmax[2] = cl->edict->v.absmax[2];
+		sv_adjusted_positions_t *pos = &truepositions[i];
+
+		VectorCopy(cl->edict->v.origin, pos->oldorg);
+		VectorCopy(cl->edict->v.absmin, pos->oldabsmin);
+		VectorCopy(cl->edict->v.absmax, pos->oldabsmax);
+		pos->active = 1;
 	}
+}
 
-	float clientLatency = _host_client->latency;
-	if (clientLatency > 1.5)
-		clientLatency = 1.5f;
+// Time in the past the other players are rewound to: the latency of the client plus its interpolation delay
+double SV_GetUnlagTargetTime(client_t *client)
+{
+	float latency = client->latency;
+	if (latency > 1.5)
+		latency = 1.5f;
 
-	if (sv_maxunlag.value != 0.0f)
+	if (sv_maxunlag.value)
 	{
-		if (sv_maxunlag.value < 0.0)
-			Cvar_SetValue("sv_maxunlag", 0.0);
+		if (sv_maxunlag.value < 0)
+			Cvar_SetValue("sv_maxunlag", 0);
 
-		if (clientLatency >= sv_maxunlag.value)
-			clientLatency = sv_maxunlag.value;
+		if (latency >= sv_maxunlag.value)
+			latency = sv_maxunlag.value;
 	}
 
-	cl_interptime = _host_client->lastcmd.lerp_msec / 1000.0f;
+	float cl_interptime = client->lastcmd.lerp_msec / 1000.0f;
 
 	if (cl_interptime > 0.1)
 		cl_interptime = 0.1f;
 
-	if (_host_client->next_messageinterval > cl_interptime)
-		cl_interptime = (float) _host_client->next_messageinterval;
+	if (client->next_messageinterval > cl_interptime)
+		cl_interptime = (float)client->next_messageinterval;
 
 #ifdef REHLDS_FIXES
 	// FP Precision fix (targettime is double there, not float)
-	targettime = realtime - clientLatency - cl_interptime + sv_unlagpush.value;
+	double targettime = realtime - latency - cl_interptime + sv_unlagpush.value;
 	if (targettime > realtime)
 		targettime = realtime;
-#else
-	targettime = float(realtime - clientLatency - cl_interptime + sv_unlagpush.value);
+#else // REHLDS_FIXES
+	float targettime = (float)(realtime - latency - cl_interptime + sv_unlagpush.value);
 	if (targettime > realtime)
-		targettime = float(realtime);
+		targettime = (float)realtime;
 #endif // REHLDS_FIXES
 
-	if (SV_UPDATE_BACKUP <= 0)
-	{
-		Q_memset(truepositions, 0, sizeof(truepositions));
-		nofind = 1;
-		return;
-	}
+	return targettime;
+}
 
-	frame = nextFrame = NULL;
-	for (i = 0; i < SV_UPDATE_BACKUP; i++, frame = nextFrame)
+// Flags the players of a frame that must not be interpolated: dead, flagged by the game module or teleported
+void SV_FlagNonInterpolatedPlayers(client_frame_t *frame)
+{
+	for (int j = 0; j < frame->entities.num_entities; j++)
 	{
-		nextFrame = &_host_client->frames[SV_UPDATE_MASK & (_host_client->netchan.outgoing_sequence + ~i)];
-		for (int j = 0; j < nextFrame->entities.num_entities; j++)
-		{
-			state = &nextFrame->entities.entities[j];
+		entity_state_t *state = &frame->entities.entities[j];
 
 #ifdef REHLDS_OPT_PEDANTIC
-			if (state->number <= 0)
-				continue;
+		if (state->number <= 0)
+			continue;
 
-			if (state->number > g_psvs.maxclients)
-				break; // players are always in the beginning of the list, no need to look more
+		if (state->number > g_psvs.maxclients)
+			break; // players are always in the beginning of the list, no need to look more
 #else
-			if (state->number <= 0 || state->number > g_psvs.maxclients)
-				continue;
+		if (state->number <= 0 || state->number > g_psvs.maxclients)
+			continue;
 #endif
 
-			pos = &truepositions[state->number - 1];
-			if (pos->deadflag)
-				continue;
+		sv_adjusted_positions_t *pos = &truepositions[state->number - 1];
+		if (pos->deadflag != DEAD_NO)
+			continue;
 
+		if (state->health <= 0 || (state->effects & EF_NOINTERP))
+			pos->deadflag = DEAD_DYING;
 
-			if (state->health <= 0)
-				pos->deadflag = 1;
+		if (!pos->temp_org_setflag)
+			pos->temp_org_setflag = 1;
+		else if (SV_UnlagCheckTeleport(state->origin, pos->temp_org))
+			pos->deadflag = DEAD_DYING;
 
-			if (state->effects & EF_NOINTERP)
-				pos->deadflag = 1;
+		VectorCopy(state->origin, pos->temp_org);
+	}
+}
 
-			if (pos->temp_org_setflag)
-			{
-				if (SV_UnlagCheckTeleport(state->origin, pos->temp_org))
-					pos->deadflag = 1;
-			}
-			else
-			{
-				pos->temp_org_setflag = 1;
-			}
+// Walks the sent frames back in time up to the first one that is not newer than targettime.
+// That frame is returned as older and the one sent after it as newer (NULL if older is the latest).
+// Returns false when no usable frame exists.
+bool SV_FindUnlagFrames(client_t *client, double targettime, client_frame_t **older, client_frame_t **newer)
+{
+	if (SV_UPDATE_BACKUP <= 0)
+		return false;
 
-			pos->temp_org[0] = state->origin[0];
-			pos->temp_org[1] = state->origin[1];
-			pos->temp_org[2] = state->origin[2];
-		}
+	client_frame_t *frame = NULL;
+	client_frame_t *prev = NULL;
+	int i;
 
-		if (targettime > nextFrame->senttime)
+	for (i = 0; i < SV_UPDATE_BACKUP; i++, prev = frame)
+	{
+		frame = &client->frames[SV_UPDATE_MASK & (client->netchan.outgoing_sequence - i - 1)];
+
+		SV_FlagNonInterpolatedPlayers(frame);
+
+		if (targettime > frame->senttime)
 			break;
 	}
 
-	if ( i >= SV_UPDATE_BACKUP || targettime - nextFrame->senttime > 1.0)
-	{
-		Q_memset(truepositions, 0, sizeof(truepositions));
-		nofind = 1;
-		return;
-	}
+	// The packets are too old to predict from
+	if (i >= SV_UPDATE_BACKUP || targettime - frame->senttime > 1.0)
+		return false;
 
-	if (frame)
-	{
-		float timeDiff = float(frame->senttime - nextFrame->senttime);
-		if (timeDiff == 0.0)
-			frac = 0.0;
-		else
-		{
-			frac = float((targettime - nextFrame->senttime) / timeDiff);
-			if (frac <= 1.0)
-			{
-				if (frac < 0.0)
-					frac = 0.0;
-			}
-			else
-				frac = 1.0;
-		}
-	}
-	else
-	{
-		frame = nextFrame;
-		frac = 0.0;
-	}
+	*older = frame;
+	*newer = prev;
+	return true;
+}
 
-	for (i = 0; i < nextFrame->entities.num_entities; i++)
+// Position of targettime between two frames: 0 at the older one, 1 at the newer one
+float SV_CalcUnlagFraction(const client_frame_t *older, const client_frame_t *newer, double targettime)
+{
+	float timeDiff = (float)(newer->senttime - older->senttime);
+	if (timeDiff == 0.0)
+		return 0.0f;
+
+	float frac = (float)((targettime - older->senttime) / timeDiff);
+	if (frac > 1.0)
+		return 1.0f;
+
+	if (frac < 0.0)
+		return 0.0f;
+
+	return frac;
+}
+
+// Moves the other players to their interpolated positions of the frame pair
+void SV_ApplyAdjustedPositions(client_t *client, client_frame_t *older, client_frame_t *newer, float frac)
+{
+	for (int i = 0; i < older->entities.num_entities; i++)
 	{
-		state = &nextFrame->entities.entities[i];
+		entity_state_t *state = &older->entities.entities[i];
 		if (state->number <= 0 || state->number > g_psvs.maxclients)
 			continue;
 
-		cl = &g_psvs.clients[state->number - 1];
-		if (cl == _host_client || !cl->active)
+		client_t *cl = &g_psvs.clients[state->number - 1];
+		if (cl == client || !cl->active)
 			continue;
 
-		pos = &truepositions[state->number - 1];
-		if (pos->deadflag)
+		sv_adjusted_positions_t *pos = &truepositions[state->number - 1];
+		if (pos->deadflag != DEAD_NO)
 			continue;
 
 		if (!pos->active)
@@ -1415,64 +1337,82 @@ void SV_SetupMove(client_t *_host_client)
 			continue;
 		}
 
-		pnextstate = SV_FindEntInPack(state->number, &frame->entities);
-
+		vec3_t origin;
+		entity_state_t *pnextstate = SV_FindEntInPack(state->number, &newer->entities);
 		if (pnextstate)
 		{
-			delta[0] = pnextstate->origin[0] - state->origin[0];
-			delta[1] = pnextstate->origin[1] - state->origin[1];
-			delta[2] = pnextstate->origin[2] - state->origin[2];
+			vec3_t delta;
+			VectorSubtract(pnextstate->origin, state->origin, delta);
 			VectorMA(state->origin, frac, delta, origin);
 		}
 		else
 		{
-			origin[0] = state->origin[0];
-			origin[1] = state->origin[1];
-			origin[2] = state->origin[2];
+			VectorCopy(state->origin, origin);
 		}
-		pos->neworg[0] = origin[0];
-		pos->neworg[1] = origin[1];
-		pos->neworg[2] = origin[2];
-		pos->initial_correction_org[0] = origin[0];
-		pos->initial_correction_org[1] = origin[1];
-		pos->initial_correction_org[2] = origin[2];
+
+		VectorCopy(origin, pos->neworg);
+		VectorCopy(origin, pos->initial_correction_org);
+
 		if (!VectorCompare(origin, cl->edict->v.origin))
 		{
-			cl->edict->v.origin[0] = origin[0];
-			cl->edict->v.origin[1] = origin[1];
-			cl->edict->v.origin[2] = origin[2];
+			VectorCopy(origin, cl->edict->v.origin);
 			SV_LinkEdict(cl->edict, FALSE);
 			pos->needrelink = 1;
 		}
 	}
 }
 
-void SV_RestoreMove(client_t *_host_client)
+// Lag compensation: rewinds the other players to the time the client saw them at when it issued the command
+void SV_SetupMove(client_t *client)
 {
-	sv_adjusted_positions_t *pos;
-	client_t *cli;
+	Q_memset(truepositions, 0, sizeof(truepositions));
+	nofind = TRUE;
 
-	if (nofind)
+	if (!SV_IsLagCompensationActive(client))
+		return;
+
+	nofind = FALSE;
+
+	SV_SaveTruePositions(client);
+
+	double targettime = SV_GetUnlagTargetTime(client);
+
+	client_frame_t *older;
+	client_frame_t *newer;
+	if (!SV_FindUnlagFrames(client, targettime, &older, &newer))
 	{
-		nofind = 0;
+		Q_memset(truepositions, 0, sizeof(truepositions));
+		nofind = TRUE;
 		return;
 	}
 
-	if (!gEntityInterface.pfnAllowLagCompensation())
-		return;
+	float frac = 0.0f;
+	if (newer)
+		frac = SV_CalcUnlagFraction(older, newer, targettime);
+	else
+		newer = older;
 
-	if (g_psvs.maxclients <= 1 || sv_unlag.value == 0.0)
-		return;
+	SV_ApplyAdjustedPositions(client, older, newer, frac);
+}
 
-	if (!_host_client->lw || !_host_client->lc || !_host_client->active)
+// Puts the players moved by SV_SetupMove back to where they are
+void SV_RestoreMove(client_t *client)
+{
+	if (nofind)
+	{
+		nofind = FALSE;
+		return;
+	}
+
+	if (!SV_IsLagCompensationActive(client))
 		return;
 
 	for (int i = 0; i < g_psvs.maxclients; i++)
 	{
-		cli = &g_psvs.clients[i];
-		pos = &truepositions[i];
+		client_t *cli = &g_psvs.clients[i];
+		sv_adjusted_positions_t *pos = &truepositions[i];
 
-		if (cli == _host_client ||! cli->active)
+		if (cli == client || !cli->active)
 			continue;
 
 		if (VectorCompare(pos->neworg, pos->oldorg) || !pos->needrelink)
@@ -1480,15 +1420,14 @@ void SV_RestoreMove(client_t *_host_client)
 
 		if (!pos->active)
 		{
-			Con_DPrintf("SV_RestoreMove:  Tried to restore 'inactive' player %i/%s\n", i, &cli->name[4]);
+			Con_DPrintf("SV_RestoreMove:  Tried to restore 'inactive' player %i/%s\n", i, cli->name);
 			continue;
 		}
 
+		// Skip the players the game module has moved in the meantime
 		if (VectorCompare(pos->initial_correction_org, cli->edict->v.origin))
 		{
-			cli->edict->v.origin[0] = pos->oldorg[0];
-			cli->edict->v.origin[1] = pos->oldorg[1];
-			cli->edict->v.origin[2] = pos->oldorg[2];
+			VectorCopy(pos->oldorg, cli->edict->v.origin);
 			SV_LinkEdict(cli->edict, FALSE);
 		}
 	}
@@ -1496,36 +1435,30 @@ void SV_RestoreMove(client_t *_host_client)
 
 void SV_ParseStringCommand(client_t *pSenderClient)
 {
-	//check string commands rate for this player
 #ifdef REHLDS_FIXES
+	// check string commands rate for this player
 	g_StringCommandsRateLimiter.StringCommandIssued(pSenderClient - g_psvs.clients);
 
-	if (!pSenderClient->connected) {
-		return; //return if player was kicked
-	}
-#endif
+	if (!pSenderClient->connected)
+		return; // player was kicked
+#endif // REHLDS_FIXES
 
 	char *s = MSG_ReadString();
-	int ret = SV_ValidateClientCommand(s);
-	switch (ret)
+
+	if (SV_ValidateClientCommand(s))
 	{
-	case 0:
-#ifndef REHLDS_OPT_PEDANTIC
-		if (Q_strlen(s) > 127)
-#endif
-		{
-			s[127] = 0;
-		}
-		Cmd_TokenizeString(s);
-		gEntityInterface.pfnClientCommand(sv_player);
-		break;
-	case 1:
 		Cmd_ExecuteString(s, src_client);
-		break;
-	case 2:	// TODO: Check not used path
-		Cbuf_InsertText(s);
-		break;
+		return;
 	}
+
+	// Commands for the game module are cut to 127 characters
+#ifndef REHLDS_OPT_PEDANTIC
+	if (Q_strlen(s) > 127)
+#endif
+		s[127] = 0;
+
+	Cmd_TokenizeString(s);
+	gEntityInterface.pfnClientCommand(sv_player);
 }
 
 void SV_ParseDelta(client_t *pSenderClient)
@@ -1540,24 +1473,21 @@ void EXT_FUNC SV_EstablishTimeBase_mod(IGameClient *cl, usercmd_t *cmds, int dro
 
 void SV_EstablishTimeBase(client_t *cl, usercmd_t *cmds, int dropped, int numbackup, int numcmds)
 {
-	return g_RehldsHookchains.m_SV_EstablishTimeBase.callChain(SV_EstablishTimeBase_mod, GetRehldsApiClient(cl), cmds, dropped, numbackup, numcmds);
+	return g_RehldsHookchains.m_SV_EstablishTimeBase.callChain(SV_EstablishTimeBase_mod, cl->pGameClient, cmds, dropped, numbackup, numcmds);
 }
 
+// Commands lost on the way are replayed only while their number stays below this limit
+const int MAX_DROPPED_CMDS = 24;
+
+// Server time the first command of the message starts at: the end of the message minus the duration of all its commands
 void SV_EstablishTimeBase_internal(client_t *cl, usercmd_t *cmds, int dropped, int numbackup, int numcmds)
 {
-	int		i;
-	double	runcmd_time = 0.0;
-	double	time_at_end = 0.0;
-	constexpr int MAX_DROPPED_CMDS = 24;
+	double runcmd_time = 0.0;
+	double time_at_end = 0.0;
 
 	// If we haven't dropped too many packets, then run some commands
 	if (dropped < MAX_DROPPED_CMDS)
 	{
-		if (dropped > numbackup)
-		{
-			// Con_Printf("%s: lost %i cmds\n", __func__, dropped - numbackup);
-		}
-
 		int droppedcmds = dropped;
 
 		// Run the last known cmd for each dropped cmd we don't have a backup for
@@ -1577,43 +1507,67 @@ void SV_EstablishTimeBase_internal(client_t *cl, usercmd_t *cmds, int dropped, i
 	}
 
 	// Now run any new command(s). Go backward because the most recent command is at index 0
-	for (i = numcmds - 1; i >= 0; i--)
-	{
+	for (int i = numcmds - 1; i >= 0; i--)
 		time_at_end += cmds[i].msec / 1000.0;
-	}
 
 	cl->svtimebase = host_frametime + g_psv.time - (time_at_end + runcmd_time);
 }
 
+// Strips the movement from the commands and keeps the view where it is
+void SV_ClearMoveCmds(usercmd_t *cmds, int numcmds)
+{
+	for (int i = 0; i < numcmds; i++)
+	{
+		usercmd_t *cmd = &cmds[i];
+		cmd->msec = 0;
+		cmd->forwardmove = 0;
+		cmd->sidemove = 0;
+		cmd->upmove = 0;
+		cmd->buttons = 0;
+
+		if (sv_player->v.flags & FL_FROZEN)
+			cmd->impulse = 0;
+
+		VectorCopy(sv_player->v.v_angle, cmd->viewangles);
+	}
+}
+
+// Replays the commands lost on the way: the last known one for the gaps without a backup, the backup ones for the rest
+void SV_RunDroppedCmds(usercmd_t *cmds, int numcmds, int numbackup)
+{
+	if (net_drop >= MAX_DROPPED_CMDS)
+		return;
+
+	while (net_drop > numbackup)
+	{
+		SV_RunCmd(&host_client->lastcmd, 0, FALSE);
+		net_drop--;
+	}
+
+	while (net_drop > 0)
+	{
+		int cmdnum = numcmds + net_drop - 1;
+		SV_RunCmd(&cmds[cmdnum], host_client->netchan.incoming_sequence - cmdnum, TRUE);
+		net_drop--;
+	}
+}
+
+// Parses the move message: the movement commands of the latest packets together with the backup of the earlier ones
 void SV_ParseMove(client_t *pSenderClient)
 {
-	client_frame_t *frame;
-	int placeholder;
-	int mlen;
-	unsigned int packetLossByte;
-	int numcmds;
-	int totalcmds;
-	byte cbpktchecksum;
-	usercmd_t *cmd;
-	usercmd_t cmds[64];
-	usercmd_t cmdNull;
-	float packet_loss;
-	byte cbchecksum;
-	int numbackup;
-
+	// Only one move message per frame is accepted
 	if (g_balreadymoved)
 	{
-		msg_badread = 1;
+		msg_badread = TRUE;
 		return;
 	}
-	g_balreadymoved = 1;
+	g_balreadymoved = TRUE;
 
-	frame = &host_client->frames[SV_UPDATE_MASK & host_client->netchan.incoming_acknowledged];
-	Q_memset(&cmdNull, 0, sizeof(cmdNull));
+	client_frame_t *frame = &host_client->frames[SV_UPDATE_MASK & host_client->netchan.incoming_acknowledged];
 
-	placeholder = msg_readcount + 1;
-	mlen = MSG_ReadByte();
-	cbchecksum = MSG_ReadByte();
+	int placeholder = msg_readcount + 1;
+	int mlen = MSG_ReadByte();
+	byte cbchecksum = MSG_ReadByte();
 
 	if (mlen <= 0 || !SZ_HasSpaceToRead(&net_message, mlen))
 	{
@@ -1625,23 +1579,29 @@ void SV_ParseMove(client_t *pSenderClient)
 
 	COM_UnMunge(&net_message.data[placeholder + 1], mlen, host_client->netchan.incoming_sequence);
 
-	packetLossByte = MSG_ReadByte();
-	numbackup = MSG_ReadByte();
-	numcmds = MSG_ReadByte();
+	unsigned int packetLossByte = MSG_ReadByte();
+	int numbackup = MSG_ReadByte();
+	int numcmds = MSG_ReadByte();
 
-	packet_loss = float(packetLossByte & 0x7F);
+	// The high bit tells whether the voice loops back to the sender, the rest is the packet loss in percent
+	float packet_loss = (float)(packetLossByte & 0x7F);
 	pSenderClient->m_bLoopback = (packetLossByte >> 7) & 1;
-	totalcmds = numcmds + numbackup;
+
+	int totalcmds = numcmds + numbackup;
 	net_drop += 1 - numcmds;
 	if (totalcmds < 0 || totalcmds >= CMD_MAXBACKUP - 1)
 	{
 		Con_Printf("SV_ReadClientMessage: too many cmds %i sent for %s/%s\n", totalcmds, host_client->name, NET_AdrToString(host_client->netchan.remote_address));
 		SV_DropClient(host_client, FALSE, "CMD_MAXBACKUP hit");
-		msg_badread = 1;
+		msg_badread = TRUE;
 		return;
 	}
 
-	usercmd_t* from = &cmdNull;
+	// The oldest command is sent first and ends up last in the array
+	usercmd_t cmds[CMD_MAXBACKUP]{};
+	usercmd_t cmdNull{};
+
+	usercmd_t *from = &cmdNull;
 	for (int i = totalcmds - 1; i >= 0; i--)
 	{
 		MSG_ReadUsercmd(&cmds[i], from);
@@ -1657,82 +1617,51 @@ void SV_ParseMove(client_t *pSenderClient)
 		return;
 	}
 
-	cbpktchecksum = COM_BlockSequenceCRCByte(&net_message.data[placeholder + 1], msg_readcount - placeholder - 1, host_client->netchan.incoming_sequence);
+	byte cbpktchecksum = COM_BlockSequenceCRCByte(&net_message.data[placeholder + 1], msg_readcount - placeholder - 1, host_client->netchan.incoming_sequence);
 	if (cbpktchecksum != cbchecksum)
 	{
 		Con_DPrintf("Failed command checksum for %s:%s\n", host_client->name, NET_AdrToString(host_client->netchan.remote_address));
-		msg_badread = 1;
+		msg_badread = TRUE;
 		return;
 	}
 
 	host_client->packet_loss = packet_loss;
-	if (!g_psv.paused && (g_psvs.maxclients > 1 || !key_dest) && !(sv_player->v.flags & FL_FROZEN))
+
+	// A paused server, a player in the console in singleplayer and a frozen player get no movement
+	if (g_psv.paused || (g_psvs.maxclients <= 1 && key_dest) || (sv_player->v.flags & FL_FROZEN))
 	{
-		sv_player->v.v_angle[0] = cmds[0].viewangles[0];
-		sv_player->v.v_angle[1] = cmds[0].viewangles[1];
-		sv_player->v.v_angle[2] = cmds[0].viewangles[2];
+		SV_ClearMoveCmds(cmds, numcmds);
+		net_drop = 0;
 	}
 	else
 	{
-		for (int i = 0; i < numcmds; i++)
-		{
-			cmd = &cmds[i];
-			cmd->msec = 0;
-			cmd->forwardmove = 0;
-			cmd->sidemove = 0;
-			cmd->upmove = 0;
-			cmd->buttons = 0;
-
-			if (sv_player->v.flags & FL_FROZEN)
-				cmd->impulse = 0;
-
-			cmd->viewangles[0] = sv_player->v.v_angle[0];
-			cmd->viewangles[1] = sv_player->v.v_angle[1];
-			cmd->viewangles[2] = sv_player->v.v_angle[2];
-		}
-
-		net_drop = 0;
+		VectorCopy(cmds[CMD_MOSTRECENT].viewangles, sv_player->v.v_angle);
 	}
 
-	//check move commands rate for this player
 #ifdef REHLDS_FIXES
+	// check move commands rate for this player
 	int numCmdsToIssue = numcmds;
-	if (net_drop > 0) {
+	if (net_drop > 0)
 		numCmdsToIssue += net_drop;
-	}
+
 	g_MoveCommandRateLimiter.MoveCommandsIssued(host_client - g_psvs.clients, numCmdsToIssue);
 
-	if (!host_client->connected) {
-		return; //return if player was kicked
-	}
-#endif
+	if (!host_client->connected)
+		return; // player was kicked
+#endif // REHLDS_FIXES
 
 #ifndef REHLDS_FIXES
-	// dup and more correct in SV_RunCmd
-	sv_player->v.button = cmds[0].buttons;
-	sv_player->v.light_level = cmds[0].lightlevel;
-#endif
+	// SV_RunCmd sets both of them as well
+	sv_player->v.button = cmds[CMD_MOSTRECENT].buttons;
+	sv_player->v.light_level = cmds[CMD_MOSTRECENT].lightlevel;
+#endif // REHLDS_FIXES
+
 	SV_EstablishTimeBase(host_client, cmds, net_drop, numbackup, numcmds);
-	if (net_drop < 24)
-	{
-		while (net_drop > numbackup)
-		{
-			SV_RunCmd(&host_client->lastcmd, 0, FALSE);
-			net_drop--;
-		}
+	SV_RunDroppedCmds(cmds, numcmds, numbackup);
 
-		while (net_drop > 0)
-		{
-			SV_RunCmd(&cmds[numcmds + net_drop - 1], host_client->netchan.incoming_sequence - (numcmds + net_drop - 1), TRUE);
-			net_drop--;
-		}
-
-	}
-
+	// Go backward because the most recent command is at index 0
 	for (int i = numcmds - 1; i >= 0; i--)
-	{
 		SV_RunCmd(&cmds[i], host_client->netchan.incoming_sequence - i, TRUE);
-	}
 
 #ifdef REHLDS_FIXES
 	// skip if client dropped while executing commands
@@ -1742,19 +1671,21 @@ void SV_ParseMove(client_t *pSenderClient)
 	if (numcmds)
 		host_client->lastcmd = cmds[numcmds - 1];
 	else if (numbackup)
-		host_client->lastcmd = cmds[0];
-#else
-	host_client->lastcmd = cmds[0];
-#endif
+		host_client->lastcmd = cmds[CMD_MOSTRECENT];
+#else // REHLDS_FIXES
+	host_client->lastcmd = cmds[CMD_MOSTRECENT];
+#endif // REHLDS_FIXES
 
-	frame->ping_time -= float(host_client->lastcmd.msec * 0.5 / 1000.0);
+	// The message left the client in the middle of its frame, so half of the last command is not part of the ping
+	frame->ping_time -= (float)(host_client->lastcmd.msec * 0.5 / 1000.0);
 	if (frame->ping_time < 0.0)
 		frame->ping_time = 0;
 
 	if (sv_player->v.animtime > host_frametime + g_psv.time)
-		sv_player->v.animtime = float(host_frametime + g_psv.time);
+		sv_player->v.animtime = (float)(host_frametime + g_psv.time);
 }
 
+// Forwards the voice data of a client to every client that listens to it
 void SV_ParseVoiceData(client_t *cl)
 {
 	char chReceived[4096];
@@ -1770,29 +1701,37 @@ void SV_ParseVoiceData(client_t *cl)
 	MSG_ReadBuf(nDataLength, chReceived);
 	cl->m_lastvoicetime = g_psv.time;
 
-	if (sv_voiceenable.value == 0.0f)
+	if (!sv_voiceenable.value)
 		return;
 
 	for (int i = 0; i < g_psvs.maxclients; i++)
 	{
 		client_t *pDestClient = &g_psvs.clients[i];
-		if (!((1 << (i & 0x1F)) & cl->m_VoiceStreams[i >> 5]) && i != iClient)
-			continue;
+		bool isSender = (i == iClient);
 
-		if (!pDestClient->active && !pDestClient->connected && i != iClient)
-			continue;
+		if (!isSender)
+		{
+			bool listening = ((1 << (i & 0x1F)) & cl->m_VoiceStreams[i >> 5]) != 0;
+			if (!listening)
+				continue;
 
+			if (!pDestClient->active && !pDestClient->connected)
+				continue;
+		}
+
+		// The sender gets its own voice back only in loopback mode
 		int nSendLength = nDataLength;
-		if (i == iClient && !pDestClient->m_bLoopback)
+		if (isSender && !pDestClient->m_bLoopback)
 			nSendLength = 0;
 
-		if (pDestClient->datagram.cursize + nSendLength + 6 < pDestClient->datagram.maxsize)
-		{
-			MSG_WriteByte(&pDestClient->datagram, svc_voicedata);
-			MSG_WriteByte(&pDestClient->datagram, iClient);
-			MSG_WriteShort(&pDestClient->datagram, nSendLength);
-			MSG_WriteBuf(&pDestClient->datagram, nSendLength, chReceived);
-		}
+		int bytesAvailable = pDestClient->datagram.maxsize - pDestClient->datagram.cursize;
+		if (bytesAvailable <= (6 + nSendLength))
+			continue;
+
+		MSG_WriteByte(&pDestClient->datagram, svc_voicedata);
+		MSG_WriteByte(&pDestClient->datagram, iClient);
+		MSG_WriteShort(&pDestClient->datagram, nSendLength);
+		MSG_WriteBuf(&pDestClient->datagram, nSendLength, chReceived);
 	}
 }
 
@@ -1802,8 +1741,8 @@ void SV_IgnoreHLTV(client_t *cl)
 
 void SV_ParseCvarValue(client_t *cl)
 {
-	char *value;
-	value = MSG_ReadString();
+	const char *value = MSG_ReadString();
+
 	if (gNewDLLFunctions.pfnCvarValue)
 		gNewDLLFunctions.pfnCvarValue(cl->edict, value);
 
@@ -1818,7 +1757,7 @@ void SV_ParseCvarValue2(client_t *cl)
 	Q_strncpy(cvarName, MSG_ReadString(), sizeof(cvarName));
 	cvarName[sizeof(cvarName) - 1] = 0;
 
-	char* value = MSG_ReadString();
+	const char *value = MSG_ReadString();
 
 	if (gNewDLLFunctions.pfnCvarValue2)
 		gNewDLLFunctions.pfnCvarValue2(cl->edict, requestID, cvarName, value);
@@ -1826,13 +1765,14 @@ void SV_ParseCvarValue2(client_t *cl)
 	Con_DPrintf("Cvar query response: name:%s, request ID %d, cvar:%s, value:%s\n", cl->name, requestID, cvarName, value);
 }
 
-void EXT_FUNC SV_HandleClientMessage_api(IGameClient* client, uint8 opcode) {
+void EXT_FUNC SV_HandleClientMessage_api(IGameClient* client, uint8 opcode)
+{
 	client_t* cl = client->GetClient();
 	if (opcode < clc_bad || opcode > clc_cvarvalue2)
 	{
 		// TODO: Are we forced to use msg_badread for break the loop.
 		static_assert(REHLDS_API_VERSION_MAJOR <= 3, "Bump major API DETECTED!! You shall rework the hookchain, make function returnable");
-		msg_badread = 1;
+		msg_badread = TRUE;
 
 		Con_Printf("SV_ReadClientMessage: unknown command char (%d)\n", opcode);
 		SV_DropClient(cl, FALSE, "Bad command character in client command");
@@ -1843,7 +1783,7 @@ void EXT_FUNC SV_HandleClientMessage_api(IGameClient* client, uint8 opcode) {
 	// Save current name of the client before a possible kick
 	char name[32];
 	Q_strlcpy(name, host_client->name);
-#endif
+#endif // REHLDS_FIXES
 
 	void(*func)(client_t *) = sv_clcfuncs[opcode].pfnParse;
 	if (func)
@@ -1851,17 +1791,17 @@ void EXT_FUNC SV_HandleClientMessage_api(IGameClient* client, uint8 opcode) {
 
 #ifdef REHLDS_FIXES
 	if (msg_badread)
-	{
 		Con_Printf("SV_ReadClientMessage: badread on %s, opcode %s\n", name, sv_clcfuncs[opcode].pszname);
-	}
-#endif
-
+#endif // REHLDS_FIXES
 }
 
+// Processes the commands of a client message one by one until the message ends or turns out to be broken
 void SV_ExecuteClientMessage(client_t *cl)
 {
-	g_balreadymoved = 0;
-	client_frame_t * frame = &cl->frames[SV_UPDATE_MASK & cl->netchan.incoming_acknowledged];
+	g_balreadymoved = FALSE;
+
+	// Ping of the frame the client has just acknowledged
+	client_frame_t *frame = &cl->frames[SV_UPDATE_MASK & cl->netchan.incoming_acknowledged];
 	frame->ping_time = realtime - frame->senttime - cl->next_messageinterval;
 	if (frame->senttime == 0.0)
 		frame->ping_time = 0;
@@ -1870,13 +1810,13 @@ void SV_ExecuteClientMessage(client_t *cl)
 		frame->ping_time = 0;
 
 	SV_ComputeLatency(cl);
+
 	host_client = cl;
 	sv_player = cl->edict;
 	cl->delta_sequence = -1;
 	pmove = &g_svmove;
-	IGameClient* apiClient = GetRehldsApiClient(cl);
 
-	while (1)
+	while (true)
 	{
 		if (msg_badread)
 		{
@@ -1894,7 +1834,7 @@ void SV_ExecuteClientMessage(client_t *cl)
 		if (c == -1)
 			return;
 
-		g_RehldsHookchains.m_HandleNetCommand.callChain(SV_HandleClientMessage_api, apiClient, c);
+		g_RehldsHookchains.m_HandleNetCommand.callChain(SV_HandleClientMessage_api, cl->pGameClient, c);
 
 #ifdef REHLDS_FIXES
 		// FIXED: Don't handle remaining packets if got dropclient above
@@ -1916,12 +1856,12 @@ qboolean SV_SetPlayer(int idnum)
 		{
 			host_client = cl;
 			sv_player = cl->edict;
-			return 1;
+			return TRUE;
 		}
 	}
 
 	Con_Printf("Userid %i is not on the server\n", idnum);
-	return 0;
+	return FALSE;
 }
 
 void SV_ShowServerinfo_f(void)
@@ -1929,16 +1869,15 @@ void SV_ShowServerinfo_f(void)
 	if (cmd_source == src_command)
 	{
 		Cmd_ForwardToServer();
+		return;
 	}
-	else
-	{
+
 #ifdef REHLDS_FIXES
-		// fix print message client console
-		SV_ClientPrintf(Info_Serverinfo());
-#else
-		Info_Print(Info_Serverinfo());
+	// fix print message client console
+	SV_ClientPrintf("%s", Info_Serverinfo());
+#else // REHLDS_FIXES
+	Info_Print(Info_Serverinfo());
 #endif // REHLDS_FIXES
-	}
 }
 
 void SV_SendEnts_f(void)
@@ -1946,84 +1885,81 @@ void SV_SendEnts_f(void)
 	if (cmd_source == src_command)
 	{
 		Cmd_ForwardToServer();
+		return;
 	}
-	else
-	{
-		if (host_client->active && host_client->spawned)
-		{
-			if (host_client->connected)
-			{
-				host_client->fully_connected = TRUE;
+
+	if (!host_client->active || !host_client->spawned || !host_client->connected)
+		return;
+
+	host_client->fully_connected = TRUE;
 
 #ifdef REHLDS_FIXES
-				// See SV_CheckFile function
-				if (sv_delayed_spray_upload.value)
-				{
-					resource_t *res = host_client->resourcesneeded.pNext;
-					if (res != &host_client->resourcesneeded)
-					{
-						// TODO: all this is already checked earlier
-						if (res->ucFlags & RES_WASMISSING && res->type == t_decal && res->ucFlags & RES_CUSTOM)
-						{
-							if (sv_rehlds_force_dlmax.value)
-							{
-								MSG_WriteByte(&host_client->netchan.message, svc_stufftext);
-								MSG_WriteString(&host_client->netchan.message, va("cl_dlmax %i\n", FRAGMENT_MAX_SIZE));
-							}
+	// See SV_CheckFile function
+	if (!sv_delayed_spray_upload.value)
+		return;
 
-							MSG_WriteByte(&host_client->netchan.message, svc_stufftext);
-							MSG_WriteString(&host_client->netchan.message, va("upload !MD5%s\n", MD5_Print(res->rgucMD5_hash)));
-						}
-					}
-				}
-#endif // REHLDS_FIXES
-			}
-		}
+	// TODO: all this is already checked earlier
+	resource_t *res = host_client->resourcesneeded.pNext;
+	if (res == &host_client->resourcesneeded)
+		return;
+
+	if (!(res->ucFlags & RES_WASMISSING) || res->type != t_decal || !(res->ucFlags & RES_CUSTOM))
+		return;
+
+	if (sv_rehlds_force_dlmax.value)
+	{
+		MSG_WriteByte(&host_client->netchan.message, svc_stufftext);
+		MSG_WriteString(&host_client->netchan.message, va("cl_dlmax %i\n", FRAGMENT_MAX_SIZE));
 	}
+
+	MSG_WriteByte(&host_client->netchan.message, svc_stufftext);
+	MSG_WriteString(&host_client->netchan.message, va("upload !MD5%s\n", MD5_Print(res->rgucMD5_hash)));
+#endif // REHLDS_FIXES
+}
+
+// Limits how often a client can ask for a full update. Returns false when the request comes too soon after the last one.
+bool SV_CheckFullUpdateRate(client_t *client)
+{
+	int entIndex = IndexOfEdict(client->edict);
+	if (s_LastFullUpdate[entIndex] > g_psv.time)
+		s_LastFullUpdate[entIndex] = 0;
+
+	float ltime = g_psv.time - s_LastFullUpdate[entIndex];
+	if (ltime <= 0.0)
+		ltime = 0.0;
+
+	if (ltime < 0.45 && g_psv.time > 0.45)
+	{
+		Con_DPrintf(
+			"%s is spamming fullupdate: (%f) (%f) (%f)\n",
+			client->name,
+			g_psv.time,
+			s_LastFullUpdate[entIndex],
+			ltime);
+		return false;
+	}
+
+	s_LastFullUpdate[entIndex] = g_psv.time;
+	return true;
 }
 
 void SV_FullUpdate_f(void)
 {
-	int entIndex;
-	float ltime;
-
 	if (cmd_source == src_command)
 	{
 		Cmd_ForwardToServer();
 		return;
 	}
 
-	if (host_client->active)
-	{
-		entIndex = IndexOfEdict(host_client->edict);
-		if (s_LastFullUpdate[entIndex] > g_psv.time)
-			s_LastFullUpdate[entIndex] = 0;
-
-		ltime = g_psv.time - s_LastFullUpdate[entIndex];
-		if (ltime <= 0.0)
-			ltime = 0.0;
-
-		if (ltime < 0.45 && g_psv.time > 0.45)
-		{
-			Con_DPrintf(
-				"%s is spamming fullupdate: (%f) (%f) (%f)\n",
-				host_client->name,
-				g_psv.time,
-				s_LastFullUpdate[entIndex],
-				ltime);
-			return;
-		}
-		s_LastFullUpdate[entIndex] = g_psv.time;
+	if (host_client->active && !SV_CheckFullUpdateRate(host_client))
+		return;
 
 #ifdef REHLDS_FIXES
-		// it's not need until not active
-		SV_ForceFullClientsUpdate();
-		gEntityInterface.pfnClientCommand( sv_player );
+	// it's not need until not active
+	if (!host_client->active)
+		return;
 #endif // REHLDS_FIXES
-	}
 
-#ifndef REHLDS_FIXES
 	SV_ForceFullClientsUpdate();
 	gEntityInterface.pfnClientCommand(sv_player);
-#endif // REHLDS_FIXES
 }

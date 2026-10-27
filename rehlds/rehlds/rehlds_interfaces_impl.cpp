@@ -690,11 +690,8 @@ void EXT_FUNC CRehldsServerData::SetResourcesNum(int num) {
 }
 
 struct resource_s *EXT_FUNC CRehldsServerData::GetResource(int index) {
-#ifdef REHLDS_FIXES
-	return &g_rehlds_sv.resources[index];
-#else // REHLDS_FIXES
-	return &g_psv.resourcelist[index];
-#endif // REHLDS_FIXES
+	resource_t *resources = SV_GetResourceList();
+	return &resources[index];
 }
 
 bool EXT_FUNC CRehldsServerData::IsActive()
