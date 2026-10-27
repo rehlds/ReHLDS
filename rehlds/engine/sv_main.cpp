@@ -1551,6 +1551,12 @@ void SV_New_f(void)
 	host_client->connection_started = realtime;
 #ifdef REHLDS_FIXES
 	g_GameClients[host_client - g_psvs.clients]->SetupLocalGameTime();
+	// On a level change the client obeys "reconnect" by sending "new" over its existing
+	// netchan; it does not go through SV_ConnectClient. Reaching here proves the client
+	// honored the command, so disarm the deadline armed by SV_InactivateClients. Map
+	// loading, resource downloads and spawn must not count against sv_reconnect_timeout;
+	// from now on the regular sv_timeout applies.
+	g_GameClients[host_client - g_psvs.clients]->SetReconnectDeadline(0.0);
 #endif
 	host_client->m_sendrescount = 0;
 
@@ -2545,8 +2551,7 @@ void EXT_FUNC SV_ConnectClient_internal(void)
 	host_client->m_bSentNewResponse = FALSE;
 	g_GameClients[host_client - g_psvs.clients]->SetSpawnedOnce(false);
 	// Client (re)established its connection, so it obeyed the level-change "reconnect" command.
-	// Disarm the deadline armed by SV_InactivateClients. This happens before any resource
-	// download/spawn, so downloading players are never affected.
+	// Disarm the deadline armed by SV_InactivateClients (an in-place reconnect clears it in SV_New_f).
 	g_GameClients[host_client - g_psvs.clients]->SetReconnectDeadline(0.0);
 #endif // REHLDS_FIXES
 
@@ -3998,6 +4003,19 @@ void SV_ReadPackets(void)
 	}
 }
 
+#ifdef REHLDS_FIXES
+// HLTV proxies only send "new" about 30 seconds after a level change, so the
+// default deadline would drop them on every map change. Give them a longer but
+// still bounded window.
+static float SV_GetReconnectTimeout(const client_t *cl)
+{
+	if (cl->proxy)
+		return Q_max(sv_reconnect_timeout.value * 3.0f, 90.0f);
+
+	return sv_reconnect_timeout.value;
+}
+#endif // REHLDS_FIXES
+
 void SV_CheckTimeouts(void)
 {
 	int i;
@@ -4026,9 +4044,9 @@ void SV_CheckTimeouts(void)
 				// Reconnect finished normally; stand down.
 				g_GameClients[i]->SetReconnectDeadline(0.0);
 			}
-			else if (sv_reconnect_timeout.value > 0.0 && (realtime - reconnectDeadline) > sv_reconnect_timeout.value)
+			else if (sv_reconnect_timeout.value > 0.0 && (realtime - reconnectDeadline) > SV_GetReconnectTimeout(cl))
 			{
-				Con_DPrintf("Dropping %s: failed to reconnect within %.0fs after level change\n", cl->name, sv_reconnect_timeout.value);
+				Con_DPrintf("Dropping %s: failed to reconnect within %.0fs after level change\n", cl->name, SV_GetReconnectTimeout(cl));
 				g_GameClients[i]->SetReconnectDeadline(0.0);
 				SV_DropClient(cl, FALSE, "Failed to reconnect after level change");
 				continue;
@@ -7822,7 +7840,7 @@ void SV_InactivateClients(void)
 
 #ifdef REHLDS_FIXES
 			// Arm the reconnect deadline: this slot must re-initiate its connection
-			// (SV_ConnectClient clears it) within sv_reconnect_timeout, or SV_CheckTimeouts
+			// (SV_New_f or SV_ConnectClient clears it) within sv_reconnect_timeout, or SV_CheckTimeouts
 			// force-drops it regardless of netchan activity. Closes the oxware changelevel
 			// phantom-slot exploit, where the cheat blocks "reconnect" and keeps the netchan warm.
 			g_GameClients[i]->SetReconnectDeadline(realtime);
