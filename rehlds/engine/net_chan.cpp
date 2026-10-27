@@ -187,7 +187,7 @@ void Netchan_Clear(netchan_t *chan)
 void Netchan_Setup(netsrc_t socketnumber, netchan_t *chan, netadr_t adr, int player_slot, void *connection_status, qboolean(*pfnNetchan_Blocksize)(void *))
 {
 	Netchan_Clear(chan);
-	g_GameClients[player_slot]->NetchanClear();
+	g_psvs.clients[player_slot].pGameClient->NetchanClear();
 
 	Q_memset(chan, 0, sizeof(netchan_t));
 
@@ -201,7 +201,7 @@ void Netchan_Setup(netsrc_t socketnumber, netchan_t *chan, netadr_t adr, int pla
 #ifdef REHLDS_FIXES
 	if (player_slot != -1)
 	{
-		chan->message.data = g_GameClients[player_slot]->GetExtendedMessageBuffer();
+		chan->message.data = g_psvs.clients[player_slot].pGameClient->GetExtendedMessageBuffer();
 		chan->message.maxsize = NET_MAX_PAYLOAD;
 	}
 	else
@@ -1526,7 +1526,7 @@ qboolean Netchan_ValidateDecompress(netchan_t *chan, int stream, unsigned int co
 
 	Netchan_DecompressionCvarsBounds();
 
-	FragStats_t &stats = g_GameClients[chan->player_slot - 1]->GetFragStats(stream);
+	FragStats_t &stats = g_psvs.clients[chan->player_slot - 1].pGameClient->GetFragStats(stream);
 
 	// check if the client should be rejected based on total failed decompress
 	if (stats.num_decompress_failures >= sv_net_incoming_decompression_max_failures.value)

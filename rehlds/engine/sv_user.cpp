@@ -957,10 +957,9 @@ void SV_RunCmd(usercmd_t* ucmd, int random_seed, qboolean fNetCmd, qboolean fCho
 	pmove->PM_PlaySound = PM_SV_PlaySound;
 	pmove->PM_TraceTexture = PM_SV_TraceTexture;
 	pmove->PM_PlaybackEventFull = PM_SV_PlaybackEventFull;
-	pmove->movevars = &host_client->movevars;
-
-	const movevars_t movevars = *pmove->movevars; // preserve current movevars
-	host_client->movevars = sv_movevars; // always use global movevars as a base
+	const movevars_t movevars = host_client->pGameClient->GetMoveVars(); // preserve current movevars
+	host_client->pGameClient->SetMoveVars(sv_movevars); // always use global movevars as a base
+	pmove->movevars = host_client->pGameClient->GetMoveVarsForPlayerMove();
 
 	gEntityInterface.pfnPM_Move(pmove, TRUE);
 

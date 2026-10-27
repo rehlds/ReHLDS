@@ -520,7 +520,7 @@ void SV_DropClient_internal(client_t *cl, qboolean crash, const char *string)
 	Q_memset(cl->physinfo, 0, sizeof(cl->physinfo));
 
 #ifdef REHLDS_FIXES
-	g_GameClients[cl - g_psvs.clients]->SetSpawnedOnce(false);
+	cl->pGameClient->SetSpawnedOnce(false);
 #endif // REHLDS_FIXES
 
 	SV_SendFullClientUpdateForAll(cl);
@@ -561,9 +561,11 @@ void Host_ClearClients(qboolean bFramesOnly)
 	{
 		host_client = g_psvs.clients;
 		for (i = 0; i < g_psvs.maxclientslimit; i++, host_client++)
+		{
 			SV_ClearFrames(&host_client->frames);
+			SV_ClearClient(host_client);
+		}
 
-		Q_memset(g_psvs.clients, 0, sizeof(client_t) * g_psvs.maxclientslimit);
 		SV_AllocClientFrames();
 	}
 }
@@ -597,9 +599,11 @@ void Host_ShutdownServer(qboolean crash)
 
 	host_client = g_psvs.clients;
 	for (i = 0; i < g_psvs.maxclientslimit; i++, host_client++)
+	{
 		SV_ClearFrames(&host_client->frames);
+		SV_ClearClient(host_client);
+	}
 
-	Q_memset(g_psvs.clients, 0, sizeof(client_t) * g_psvs.maxclientslimit);
 	HPAK_FlushHostQueue();
 	Steam_Shutdown();
 	Log_Printf("Server shutdown\n");

@@ -82,6 +82,9 @@ private:
 	// and client is not yet initialized ScoreBoard which leads to memory corruption in the client.
 	bool m_bSpawnedOnce;
 
+	// Movement variables of this client: the global ones as a base, changed by the game DLL in PM_Move
+	movevars_t m_MoveVars;
+
 #ifdef REHLDS_FIXES
 	double m_localGameTimeBase;
 
@@ -271,6 +274,12 @@ public:
 
 	void NetchanClear() { m_NetChan.Clear(); }
 	FragStats_t &GetFragStats(int stream) { return m_NetChan.GetFragStats(stream); };
+
+	const movevars_t &GetMoveVars() const { return m_MoveVars; }
+	void SetMoveVars(const movevars_t &movevars) { m_MoveVars = movevars; }
+
+	// The game DLL changes them in PM_Move through playermove_t
+	movevars_t *GetMoveVarsForPlayerMove() { return &m_MoveVars; }
 
 #ifdef REHLDS_FIXES
 	void SetupLocalGameTime() { m_localGameTimeBase = g_psv.time; }

@@ -178,6 +178,8 @@ typedef struct client_frame_s
 	packet_entities_t entities;
 } client_frame_t;
 
+class CGameClient;
+
 typedef struct client_s
 {
 	qboolean active;
@@ -221,7 +223,7 @@ typedef struct client_s
 	char name[32];
 	int topcolor;
 	int bottomcolor;
-	int entityId;
+	CGameClient *pGameClient;	// the game client bound to this slot; the original layout keeps an unused field here (DONT YOU DARE TOUCH ME)
 	resource_t resourcesonhand;
 	resource_t resourcesneeded;
 	FileHandle_t upload;
@@ -236,7 +238,6 @@ typedef struct client_s
 	double m_lastvoicetime;
 	int m_sendrescount;
 	qboolean m_bSentNewResponse;
-	movevars_t movevars;
 } client_t;
 
 enum
@@ -440,6 +441,7 @@ qboolean SV_IsPlayerIndex_wrapped(int index);
 void SV_ClearPacketEntities(client_frame_t *frame);
 void SV_AllocPacketEntities(client_frame_t *frame, int numents);
 void SV_ClearFrames(client_frame_t ** frames);
+void SV_ClearClient(client_t *cl);
 void SV_Serverinfo_f(void);
 void SV_Localinfo_f(void);
 void SV_User_f(void);

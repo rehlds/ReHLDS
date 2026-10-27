@@ -40,6 +40,9 @@ CGameClient::CGameClient(int id, client_t* cl)
 	m_Id = id;
 	m_pClient = cl;
 	m_bSpawnedOnce = false;
+	SetMoveVars({});
+
+	cl->pGameClient = this;
 }
 
 int EXT_FUNC CGameClient::GetId()

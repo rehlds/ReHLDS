@@ -501,6 +501,18 @@ void SV_ClearFrames(client_frame_t **frames)
 	}
 }
 
+// Zeroes the slot for a new client; the slot stays bound to its game client, whose movement
+// variables start over with it
+void SV_ClearClient(client_t *cl)
+{
+	CGameClient *gameClient = cl->pGameClient;
+
+	Q_memset(cl, 0, sizeof(client_t));
+
+	cl->pGameClient = gameClient;
+	gameClient->SetMoveVars({});
+}
+
 void SV_Serverinfo_f(void)
 {
 	if (Cmd_Argc() == 1)
@@ -1209,7 +1221,7 @@ void SV_SendServerinfo_internal(sizebuf_t *msg, client_t *client)
 	client->spawned = FALSE;
 	client->connected = TRUE;
 	client->fully_connected = FALSE;
-	client->movevars = sv_movevars;
+	client->pGameClient->SetMoveVars(sv_movevars);
 }
 
 void SV_SendResources(sizebuf_t *msg)
@@ -1351,7 +1363,7 @@ void SV_WriteClientdataToMessage(client_t *client, sizebuf_t *msg)
 					[](float &globalGameTime)
 				{
 					if (globalGameTime > 0.0f)
-						globalGameTime -= (float)g_GameClients[host_client - g_psvs.clients]->GetLocalGameTimeBase();
+						globalGameTime -= (float)host_client->pGameClient->GetLocalGameTimeBase();
 				};
 				if (g_eGameType == GT_CStrike || g_eGameType == GT_CZero)
 					convertGlobalGameTimeToLocal(std::ref(tdata->m_fAimedDamage));
@@ -1441,7 +1453,7 @@ void SV_WriteSpawn(sizebuf_t *msg)
 #ifdef REHLDS_FIXES
 	if (sv_rehlds_local_gametime.value != 0.0f)
 	{
-		MSG_WriteFloat(msg, (float)g_GameClients[host_client - g_psvs.clients]->GetLocalGameTime());
+		MSG_WriteFloat(msg, (float)host_client->pGameClient->GetLocalGameTime());
 	}
 	else
 #endif
@@ -1496,7 +1508,7 @@ void SV_WriteSpawn(sizebuf_t *msg)
 	host_client->fully_connected = FALSE;
 
 #ifdef REHLDS_FIXES
-	g_GameClients[host_client - g_psvs.clients]->SetSpawnedOnce(true);
+	host_client->pGameClient->SetSpawnedOnce(true);
 #endif // REHLDS_FIXES
 
 	NotifyDedicatedServerUI("UpdatePlayers");
@@ -1550,13 +1562,13 @@ void SV_New_f(void)
 	host_client->connected = TRUE;
 	host_client->connection_started = realtime;
 #ifdef REHLDS_FIXES
-	g_GameClients[host_client - g_psvs.clients]->SetupLocalGameTime();
+	host_client->pGameClient->SetupLocalGameTime();
 	// On a level change the client obeys "reconnect" by sending "new" over its existing
 	// netchan; it does not go through SV_ConnectClient. Reaching here proves the client
 	// honored the command, so disarm the deadline armed by SV_InactivateClients. Map
 	// loading, resource downloads and spawn must not count against sv_reconnect_timeout;
 	// from now on the regular sv_timeout applies.
-	g_GameClients[host_client - g_psvs.clients]->SetReconnectDeadline(0.0);
+	host_client->pGameClient->SetReconnectDeadline(0.0);
 #endif
 	host_client->m_sendrescount = 0;
 
@@ -2549,10 +2561,10 @@ void EXT_FUNC SV_ConnectClient_internal(void)
 
 #ifdef REHLDS_FIXES
 	host_client->m_bSentNewResponse = FALSE;
-	g_GameClients[host_client - g_psvs.clients]->SetSpawnedOnce(false);
+	host_client->pGameClient->SetSpawnedOnce(false);
 	// Client (re)established its connection, so it obeyed the level-change "reconnect" command.
 	// Disarm the deadline armed by SV_InactivateClients (an in-place reconnect clears it in SV_New_f).
-	g_GameClients[host_client - g_psvs.clients]->SetReconnectDeadline(0.0);
+	host_client->pGameClient->SetReconnectDeadline(0.0);
 #endif // REHLDS_FIXES
 
 	bIsSecure = Steam_GSBSecure();
@@ -4036,18 +4048,18 @@ void SV_CheckTimeouts(void)
 		// time (see SV_InactivateClients), NOT from netchan.last_received, so a cheat that keeps
 		// the netchan warm to block the "reconnect" command (oxware svc_stufftext filter ->
 		// phantom slot) cannot dodge it the way it dodges the normal sv_timeout.
-		double reconnectDeadline = g_GameClients[i]->GetReconnectDeadline();
+		double reconnectDeadline = cl->pGameClient->GetReconnectDeadline();
 		if (reconnectDeadline != 0.0)
 		{
 			if (cl->fully_connected)
 			{
 				// Reconnect finished normally; stand down.
-				g_GameClients[i]->SetReconnectDeadline(0.0);
+				cl->pGameClient->SetReconnectDeadline(0.0);
 			}
 			else if (sv_reconnect_timeout.value > 0.0 && (realtime - reconnectDeadline) > SV_GetReconnectTimeout(cl))
 			{
 				Con_DPrintf("Dropping %s: failed to reconnect within %.0fs after level change\n", cl->name, SV_GetReconnectTimeout(cl));
-				g_GameClients[i]->SetReconnectDeadline(0.0);
+				cl->pGameClient->SetReconnectDeadline(0.0);
 				SV_DropClient(cl, FALSE, "Failed to reconnect after level change");
 				continue;
 			}
@@ -5073,10 +5085,8 @@ qboolean SV_SendClientDatagram(client_t *client)
 #ifdef REHLDS_FIXES
 	if (sv_rehlds_local_gametime.value != 0.0f)
 	{
-		CGameClient* gameClient = g_GameClients[client - g_psvs.clients];
-
-		double localGameTime = gameClient->GetLocalGameTime();
-		double localGameTimeBase = gameClient->GetLocalGameTimeBase();
+		double localGameTime = client->pGameClient->GetLocalGameTime();
+		double localGameTimeBase = client->pGameClient->GetLocalGameTimeBase();
 		DELTA_SetTimeBaseOverride(localGameTime, localGameTimeBase);
 
 		MSG_WriteFloat(&msg, (float)localGameTime);
@@ -5203,7 +5213,7 @@ void SV_UpdateToReliableMessages(void)
 		// Fix for the "server failed to transmit file 'AY&SY..." bug
 		// https://github.com/dreamstalker/rehlds/issues/38
 #ifdef REHLDS_FIXES
-		if (!(!client->fakeclient && (client->active || g_GameClients[i]->GetSpawnedOnce())))
+		if (!(!client->fakeclient && (client->active || client->pGameClient->GetSpawnedOnce())))
 			continue;
 
 		if (!svReliableCompressed && g_psv.reliable_datagram.cursize + client->netchan.message.cursize < client->netchan.message.maxsize)
@@ -7843,7 +7853,7 @@ void SV_InactivateClients(void)
 			// (SV_New_f or SV_ConnectClient clears it) within sv_reconnect_timeout, or SV_CheckTimeouts
 			// force-drops it regardless of netchan activity. Closes the oxware changelevel
 			// phantom-slot exploit, where the cheat blocks "reconnect" and keeps the netchan warm.
-			g_GameClients[i]->SetReconnectDeadline(realtime);
+			cl->pGameClient->SetReconnectDeadline(realtime);
 #endif // REHLDS_FIXES
 
 			SZ_Clear(&cl->netchan.message);
@@ -8623,7 +8633,7 @@ void SV_Init(void)
 	{
 		client_t *cl = &g_psvs.clients[i];
 		SV_ClearFrames(&cl->frames);
-		Q_memset(cl, 0, sizeof(client_t));
+		SV_ClearClient(cl);
 		cl->resourcesonhand.pPrev = &cl->resourcesonhand;
 		cl->resourcesonhand.pNext = &cl->resourcesonhand;
 		cl->resourcesneeded.pPrev = &cl->resourcesneeded;

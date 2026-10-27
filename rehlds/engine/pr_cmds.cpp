@@ -1997,7 +1997,7 @@ edict_t *EXT_FUNC CreateFakeClient_internal(const char *netname)
 	if (fakeclient->frames)
 		SV_ClearFrames(&fakeclient->frames);
 
-	Q_memset(fakeclient, 0, sizeof(client_t));
+	SV_ClearClient(fakeclient);
 	fakeclient->resourcesneeded.pPrev = &fakeclient->resourcesneeded;
 	fakeclient->resourcesneeded.pNext = &fakeclient->resourcesneeded;
 	fakeclient->resourcesonhand.pPrev = &fakeclient->resourcesonhand;
