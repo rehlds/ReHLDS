@@ -31,36 +31,49 @@
 // NOTE: This file contains a lot of fixes that are not covered by REHLDS_FIXES define.
 // TODO: Most of the Info_ functions can be speedup via removing unneded copy of key and values.
 
+// How much a key matters when the info string runs out of room, the lowest goes first
+enum InfoKeyPriority
+{
+	INFO_KEY_PRIORITY_UNKNOWN, // out of the table: set by players or plugins for one server
+	INFO_KEY_PRIORITY_LOW,     // the game falls back to its default when the key is missing
+	INFO_KEY_PRIORITY_HIGH,
+};
+
 struct info_field_t
 {
 	char*	name;
 	bool	integer;
+	InfoKeyPriority priority;
 };
 
 info_field_t g_info_important_fields[] =
 {
-	// name				integer
-	{ "name",			false },
-	{ "model",			false },
+	// name				integer	priority
+	{ "name",			false,	INFO_KEY_PRIORITY_HIGH },
+	{ "model",			false,	INFO_KEY_PRIORITY_HIGH },
 
 	// model colors
-	{ "topcolor",		true },
-	{ "bottomcolor",	true },
+	{ "topcolor",		true,	INFO_KEY_PRIORITY_HIGH },
+	{ "bottomcolor",	true,	INFO_KEY_PRIORITY_HIGH },
 
 	// network
-	{ "rate",			true },
-	{ "cl_updaterate",	true },
-	{ "cl_lw",			true },
-	{ "cl_lc",			true },
+	{ "rate",			true,	INFO_KEY_PRIORITY_HIGH },
+	{ "cl_updaterate",	true,	INFO_KEY_PRIORITY_HIGH },
+	{ "cl_lw",			true,	INFO_KEY_PRIORITY_HIGH },
+	{ "cl_lc",			true,	INFO_KEY_PRIORITY_HIGH },
 
 	// hltv flag
-	{ "*hltv",			true },
+	{ "*hltv",			true,	INFO_KEY_PRIORITY_HIGH },
 
 	// avatars
-	{ "*sid",			false }, // transmit as string because it's int64
+	{ "*sid",			false,	INFO_KEY_PRIORITY_HIGH }, // transmit as string because it's int64
 
 	// gui/text menus
-	{ "_vgui_menus",	true }
+	{ "_vgui_menus",	true,	INFO_KEY_PRIORITY_HIGH },
+
+	// game preferences
+	{ "_cl_autowepswitch",	true,	INFO_KEY_PRIORITY_HIGH },
+	{ "_ah",			true,	INFO_KEY_PRIORITY_LOW }, // hints, shown when the key is missing
 };
 
 std::vector<info_field_t *> g_info_transmitted_fields;
@@ -407,6 +420,60 @@ qboolean Info_IsKeyImportant(const char *key, size_t keyLen)
 	copy[keyLen] = '\0';
 	return Info_IsKeyImportant(copy);
 }
+
+static InfoKeyPriority Info_KeyPriority(const char *key, size_t keyLen)
+{
+	if (key[0] == '*')
+		return INFO_KEY_PRIORITY_HIGH;
+
+	for (auto& field : g_info_important_fields) {
+		if (Q_strlen(field.name) == keyLen && !Q_strncmp(key, field.name, keyLen))
+			return field.priority;
+	}
+
+	// The client sets these from its own cvars, keys of plugins go first
+	if (key[0] == '_')
+		return INFO_KEY_PRIORITY_LOW;
+
+	return INFO_KEY_PRIORITY_UNKNOWN;
+}
+
+static const char *Info_FindLargestKeyOfPriority(const char *s, InfoKeyPriority priority)
+{
+	static char largestKey[MAX_KV_LEN];
+	size_t largestLen = 0;
+
+	while (*s == '\\')
+	{
+		// skip starting slash
+		const char* key = ++s;
+
+		// skip key
+		while (*s != '\\') {
+			if (*s == '\0')
+				return "";
+
+			s++;
+		}
+
+		size_t keyLen = s - key;
+		const char* value = ++s; // skip separating slash
+
+		// skip value
+		while (*s != '\\' && *s != '\0')
+			s++;
+
+		size_t totalLen = keyLen + (s - value);
+
+		if (totalLen > largestLen && keyLen < sizeof(largestKey) && Info_KeyPriority(key, keyLen) == priority) {
+			largestLen = totalLen;
+			Q_memcpy(largestKey, key, keyLen);
+			largestKey[keyLen] = '\0';
+		}
+	}
+
+	return largestLen ? largestKey : "";
+}
 #else
 qboolean Info_IsKeyImportant(const char *key)
 {
@@ -639,25 +706,27 @@ qboolean Info_SetValueForStarKey(char *s, const char *key, const char *value, si
 	if (Q_strlen(s) + neededLength >= maxsize)
 	{
 		// no more room in the buffer to add key/value
-		if (!Info_IsKeyImportant(key))
+		InfoKeyPriority keyPriority = Info_KeyPriority(key, keyLen);
+
+		// keep removing the largest key/values of a lower priority, the lowest priority first, until we have a room
+		for (int priority = INFO_KEY_PRIORITY_UNKNOWN; priority < keyPriority; priority++)
+		{
+			while (Q_strlen(s) + neededLength >= maxsize)
+			{
+				const char* largekey = Info_FindLargestKeyOfPriority(s, (InfoKeyPriority)priority);
+				if (largekey[0] == '\0')
+					break;
+
+				Info_RemoveKey(s, largekey);
+			}
+		}
+
+		if (Q_strlen(s) + neededLength >= maxsize)
 		{
 			// no room to add setting
 			Con_Printf("Info string length exceeded\n");
 			return FALSE;
 		}
-
-		// keep removing the largest key/values until we have a room
-		do
-		{
-			const char* largekey = Info_FindLargestKey(s, maxsize);
-			if (largekey[0] == '\0')
-			{
-				// no room to add setting
-				Con_Printf("Info string length exceeded\n");
-				return FALSE;
-			}
-			Info_RemoveKey(s, largekey);
-		} while ((int)Q_strlen(s) + neededLength >= maxsize);
 	}
 
 	Q_strcat(s, newArray);
