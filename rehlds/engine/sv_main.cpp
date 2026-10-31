@@ -6814,6 +6814,23 @@ void FilterToString(const ipfilter_t &f, char *s)
 		Q_sprintf(s, "%i.%i.%i.%i/%i", b[0], b[1], b[2], b[3], f.cidr);
 }
 
+#ifdef REHLDS_FIXES
+static void SV_NotifyIPBanAdded(const ipfilter_t &f, float banTime)
+{
+	char strFilter[32];
+	char reason[32];
+
+	FilterToString(f, strFilter);
+
+	if (banTime == 0.0f)
+		Q_strcpy(reason, "permanently");
+	else
+		Q_snprintf(reason, sizeof(reason), "for %g minutes", banTime);
+
+	Con_Printf("Ban: \"%s\" was added to the IP ban list %s\n", strFilter, reason);
+}
+#endif // REHLDS_FIXES
+
 bool IsFilterIncludesAnotherFilter(const ipfilter_t &f, const ipfilter_t &f2)
 {
 	return f2.mask >= f.mask
@@ -7569,6 +7586,7 @@ void SV_AddIP_f(void)
 			ipfilters[i].banEndTime = (banTime == 0.0f) ? 0.0f : banTime * 60.0f + realtime;
 #ifdef REHLDS_FIXES
 			ipfilters[i].cidr = tempFilter.cidr;
+			SV_NotifyIPBanAdded(ipfilters[i], banTime);
 #endif // REHLDS_FIXES
 			return;
 		}
@@ -7590,14 +7608,14 @@ void SV_AddIP_f(void)
 	ipfilters[i].mask = tempFilter.mask;
 #ifdef REHLDS_FIXES
 	ipfilters[i].cidr = tempFilter.cidr;
-#endif // REHLDS_FIXES
 
-#ifdef REHLDS_FIXES
 	char reason[32];
 	if (banTime == 0.0f)
 		Q_strcpy(reason, "permanently");
 	else
 		Q_sprintf(reason, "for %g minutes", banTime);
+
+	SV_NotifyIPBanAdded(ipfilters[i], banTime);
 #endif // REHLDS_FIXES
 
 	for (int i = 0; i < g_psvs.maxclients; i++)
