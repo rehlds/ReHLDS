@@ -5155,6 +5155,17 @@ void SV_WriteEntitiesToClient(client_t *client, sizebuf_t *msg)
 	SV_EmitEvents(client, pack, msg);
 	if (sendping)
 		SV_EmitPings(client, msg);
+
+	SV_EmitSnapshotMessages(client, msg);
+}
+
+// The messages modules gave the client for this update (IGameClient::AddSnapshotMessage)
+void SV_EmitSnapshotMessages(client_t *cl, sizebuf_t *msg)
+{
+	// The datagram of the client goes into the packet after these messages and keeps its room
+	const int room = msg->maxsize - msg->cursize - cl->datagram.cursize;
+
+	cl->pGameClient->GetSnapshotMessages().Emit(msg, room, cl->name);
 }
 
 void SV_CleanupEnts(void)

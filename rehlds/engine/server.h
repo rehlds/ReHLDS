@@ -542,6 +542,7 @@ void SV_SendFullClientUpdateForAll(client_t *client);
 void SV_FullClientUpdate(client_t *cl, sizebuf_t *sb);
 void SV_EmitEvents(client_t *cl, packet_entities_t *pack, sizebuf_t *msg);
 void SV_EmitEvents_internal(client_t *cl, packet_entities_t *pack, sizebuf_t *msg);
+void SV_EmitSnapshotMessages(client_t *cl, sizebuf_t *msg);
 void SV_AddToFatPVS(vec_t *org, mnode_t *node);
 unsigned char *SV_FatPVS(float *org);
 void SV_AddToFatPAS(vec_t *org, mnode_t *node);

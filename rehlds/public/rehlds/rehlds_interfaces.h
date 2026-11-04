@@ -232,6 +232,11 @@ public:
 	// 0 when the extension has no parameter or is not agreed
 	virtual int GetProtocolExtensionParam(ProtocolExtension extension) = 0;
 
+	// An extended user message for the next update of the client, written into its packet after
+	// the entities, where the packet has room for it; unreliable, as the update is. False without
+	// PROTOCOL_EXT_USERMESSAGE, for a name too long, or when the messages waiting fill a packet
+	virtual bool AddSnapshotMessage(const char *name, const void *data, int size) = 0;
+
 	// this must be the last virtual function in class
 #ifdef REHLDS_SELF
 	virtual client_t* GetClient() = 0;

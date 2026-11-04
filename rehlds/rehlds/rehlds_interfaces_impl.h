@@ -31,6 +31,7 @@
 #include "server.h"
 #include "protocol/negotiation.h"
 #include "protocol/split_packets.h"
+#include "protocol/snapshot_messages.h"
 
 const int NET_DECOMPRESS_MAX_TIMES = 10;
 
@@ -105,6 +106,9 @@ private:
 
 	// Packets over the part size of a client with PROTOCOL_EXT_PACKETSIZE
 	CSplitPacketSender m_SplitPacketSender;
+
+	// Messages of modules for the next update, AddSnapshotMessage
+	CSnapshotMessages m_SnapshotMessages;
 public:
 	CGameClient(int id, client_t* cl);
 
@@ -279,6 +283,7 @@ public:
 
 	virtual bool HasProtocolExtension(ProtocolExtension extension);
 	virtual int GetProtocolExtensionParam(ProtocolExtension extension);
+	virtual bool AddSnapshotMessage(const char *name, const void *data, int size);
 
 public:
 	bool GetSpawnedOnce() const { return m_bSpawnedOnce; }
@@ -297,7 +302,9 @@ public:
 	movevars_t *GetMoveVarsForPlayerMove() { return &m_MoveVars; }
 
 	void SetProtocolExtensions(const CProtocolAgreement &agreement) { m_ProtocolAgreement = agreement; m_SplitPacketSender.SetMaxRoutable(agreement.GetMaxRoutable()); }
-	void ClearProtocolExtensions() { m_ProtocolAgreement.Clear(); }
+	void ClearProtocolExtensions() { m_ProtocolAgreement.Clear(); m_SnapshotMessages.Clear(); }
+
+	CSnapshotMessages &GetSnapshotMessages() { return m_SnapshotMessages; }
 
 	// The largest packet the client reassembles
 	int GetMaxPacketSize() const;

@@ -525,6 +525,18 @@ int EXT_FUNC CGameClient::GetProtocolExtensionParam(ProtocolExtension extension)
 	return m_ProtocolAgreement.GetParam(extension);
 }
 
+bool EXT_FUNC CGameClient::AddSnapshotMessage(const char *name, const void *data, int size)
+{
+#ifdef REHLDS_FIXES
+	if (!m_ProtocolAgreement.Has(PROTOCOL_EXT_USERMESSAGE))
+		return false;
+
+	return m_SnapshotMessages.Add(name, data, size, GetMaxDatagramSize());
+#else
+	return false;
+#endif
+}
+
 int CGameClient::GetMaxPacketSize() const
 {
 	if (m_ProtocolAgreement.Has(PROTOCOL_EXT_PACKETSIZE))
