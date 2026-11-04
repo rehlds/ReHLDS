@@ -37,6 +37,7 @@ class IGameClient;
 #include "common_rehlds.h"
 #include "userid_rehlds.h"
 #include "FileSystem.h"
+#include "protocol_extensions.h"
 
 #ifdef REHLDS_SELF
 #include "server.h"
@@ -223,6 +224,9 @@ public:
 
 	virtual bool IsSentNewResponse() = 0;
 	virtual void SetSentNewResponse(bool state) = 0;
+
+	// Agreed with the client in its connect request, kept until it disconnects
+	virtual bool HasProtocolExtension(ProtocolExtension extension) = 0;
 
 	// this must be the last virtual function in class
 #ifdef REHLDS_SELF

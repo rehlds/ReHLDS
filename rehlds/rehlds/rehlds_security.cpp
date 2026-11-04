@@ -10,6 +10,11 @@ cvar_t sv_rehlds_movecmdrate_burst_punish = { "sv_rehlds_movecmdrate_burst_punis
 cvar_t sv_rehlds_stringcmdrate_avg_punish = { "sv_rehlds_stringcmdrate_avg_punish", "5", 0, 5.0f, NULL };
 cvar_t sv_rehlds_stringcmdrate_burst_punish = { "sv_rehlds_stringcmdrate_burst_punish", "5", 0, 5.0f, NULL };
 
+cvar_t sv_rehlds_usermsgrate_max_avg = { "sv_rehlds_usermsgrate_max_avg", "250", 0, 250.0f, NULL };
+cvar_t sv_rehlds_usermsgrate_max_burst = { "sv_rehlds_usermsgrate_max_burst", "500", 0, 500.0f, NULL };
+cvar_t sv_rehlds_usermsgrate_avg_punish = { "sv_rehlds_usermsgrate_avg_punish", "5", 0, 5.0f, NULL };
+cvar_t sv_rehlds_usermsgrate_burst_punish = { "sv_rehlds_usermsgrate_burst_punish", "5", 0, 5.0f, NULL };
+
 cvar_t sv_rehlds_dlfile_bucket_size = { "sv_rehlds_dlfile_bucket_size", "0", 0, 0.0f, NULL };
 cvar_t sv_rehlds_dlfile_refillrate = { "sv_rehlds_dlfile_refillrate", "50", 0, 50.0f, NULL };
 cvar_t sv_rehlds_dlfile_punish = { "sv_rehlds_dlfile_punish", "-1", 0, -1.0f, NULL };
@@ -34,6 +39,7 @@ cvar_t sv_rehlds_movecmdtime_max_warnings = { "sv_rehlds_movecmdtime_max_warning
 
 CMoveCommandRateLimiter g_MoveCommandRateLimiter;
 CStringCommandsRateLimiter g_StringCommandsRateLimiter;
+CUserMessagesRateLimiter g_UserMessagesRateLimiter;
 CUserCmdTimeLimiter g_UserCmdTimeLimiter;
 CDlFileRateLimiter g_DlFileRateLimiter;
 
@@ -196,6 +202,86 @@ void CStringCommandsRateLimiter::CheckAverageRate(unsigned int clientId) {
 			Cbuf_AddText(va("addip %.1f %s\n", sv_rehlds_stringcmdrate_avg_punish.value, NET_BaseAdrToString(cl->netchan.remote_address)));
 			SV_DropClient(cl, false, "Banned for string commands flooding (Avg)");
 		}
+	}
+}
+
+CUserMessagesRateLimiter::CUserMessagesRateLimiter() {
+	Q_memset(m_AverageUserMsgRate, 0, sizeof(m_AverageUserMsgRate));
+	Q_memset(m_CurrentUserMsgs, 0, sizeof(m_CurrentUserMsgs));
+	m_LastCheckTime = 0.0;
+}
+
+void CUserMessagesRateLimiter::UpdateAverageRates(double dt) {
+	for (unsigned int i = 0; i < MAX_CLIENTS; i++) {
+		m_AverageUserMsgRate[i] = (2.0 * m_AverageUserMsgRate[i] / 3.0) + m_CurrentUserMsgs[i] / dt / 3.0;
+		m_CurrentUserMsgs[i] = 0;
+
+		CheckAverageRate(i);
+	}
+}
+
+void CUserMessagesRateLimiter::Frame() {
+	double currentTime = realtime;
+	double dt = currentTime - m_LastCheckTime;
+
+	if (dt < 0.5) { //refresh avg. rate every 0.5 sec
+		return;
+	}
+
+	UpdateAverageRates(dt);
+	m_LastCheckTime = currentTime;
+}
+
+void CUserMessagesRateLimiter::ClientConnected(unsigned int clientId) {
+	m_CurrentUserMsgs[clientId] = 0;
+	m_AverageUserMsgRate[clientId] = 0.0f;
+}
+
+void CUserMessagesRateLimiter::UserMessageIssued(unsigned int clientId) {
+	m_CurrentUserMsgs[clientId]++;
+	CheckBurstRate(clientId);
+}
+
+void CUserMessagesRateLimiter::CheckBurstRate(unsigned int clientId) {
+	client_t* cl = &g_psvs.clients[clientId];
+	if (!cl->connected || sv_rehlds_usermsgrate_max_burst.value <= 0.0f) {
+		return;
+	}
+
+	double dt = realtime - m_LastCheckTime;
+	if (dt < 0.2) {
+		dt = 0.2; //small intervals may give too high rates
+	}
+
+	float rate = (float)(m_CurrentUserMsgs[clientId] / dt);
+	if (rate > sv_rehlds_usermsgrate_max_burst.value) {
+		Punish(clientId, sv_rehlds_usermsgrate_burst_punish.value, "user messages flooding (burst)", rate);
+	}
+}
+
+void CUserMessagesRateLimiter::CheckAverageRate(unsigned int clientId) {
+	client_t* cl = &g_psvs.clients[clientId];
+	if (!cl->connected || sv_rehlds_usermsgrate_max_avg.value <= 0.0f) {
+		return;
+	}
+
+	if (m_AverageUserMsgRate[clientId] > sv_rehlds_usermsgrate_max_avg.value) {
+		Punish(clientId, sv_rehlds_usermsgrate_avg_punish.value, "user messages flooding (Avg)", m_AverageUserMsgRate[clientId]);
+	}
+}
+
+void CUserMessagesRateLimiter::Punish(unsigned int clientId, float banMinutes, const char *reason, float rate) {
+	client_t* cl = &g_psvs.clients[clientId];
+
+	if (banMinutes < 0) {
+		Con_DPrintf("%s Kicked for %s (%.1f)\n", cl->name, reason, rate);
+		SV_DropClient(cl, false, "Kicked for %s", reason);
+	}
+	else
+	{
+		Con_DPrintf("%s Banned for %s (%.1f)\n", cl->name, reason, rate);
+		Cbuf_AddText(va("addip %.1f %s\n", banMinutes, NET_BaseAdrToString(cl->netchan.remote_address)));
+		SV_DropClient(cl, false, "Banned for %s", reason);
 	}
 }
 
@@ -477,6 +563,11 @@ void Rehlds_Security_Init() {
 	Cvar_RegisterVariable(&sv_rehlds_stringcmdrate_avg_punish);
 	Cvar_RegisterVariable(&sv_rehlds_stringcmdrate_burst_punish);
 
+	Cvar_RegisterVariable(&sv_rehlds_usermsgrate_max_avg);
+	Cvar_RegisterVariable(&sv_rehlds_usermsgrate_max_burst);
+	Cvar_RegisterVariable(&sv_rehlds_usermsgrate_avg_punish);
+	Cvar_RegisterVariable(&sv_rehlds_usermsgrate_burst_punish);
+
 	Cvar_RegisterVariable(&sv_rehlds_dlfile_bucket_size);
 	Cvar_RegisterVariable(&sv_rehlds_dlfile_refillrate);
 	Cvar_RegisterVariable(&sv_rehlds_dlfile_punish);
@@ -500,6 +591,7 @@ void Rehlds_Security_Frame() {
 #ifdef REHLDS_FIXES
 	g_MoveCommandRateLimiter.Frame();
 	g_StringCommandsRateLimiter.Frame();
+	g_UserMessagesRateLimiter.Frame();
 	g_UserCmdTimeLimiter.Frame();
 #endif
 }
@@ -508,6 +600,7 @@ void Rehlds_Security_ClientConnected(unsigned int clientId) {
 #ifdef REHLDS_FIXES
 	g_MoveCommandRateLimiter.ClientConnected(clientId);
 	g_StringCommandsRateLimiter.ClientConnected(clientId);
+	g_UserMessagesRateLimiter.ClientConnected(clientId);
 	g_UserCmdTimeLimiter.ClientConnected(clientId);
 	g_DlFileRateLimiter.ClientConnected(clientId);
 #endif

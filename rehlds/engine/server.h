@@ -167,6 +167,10 @@ struct rehlds_server_t {
 
 	char lightstyleBuffers[MAX_LIGHTSTYLES][MAX_LIGHTSTYLE_SIZE];
 #endif
+
+	// MSG_INIT extended user messages, sent after the signon to clients with PROTOCOL_EXT_USERMESSAGE
+	sizebuf_t extendedSignon;
+	uint8_t extendedSignonData[NET_MAX_PAYLOAD];
 };
 
 typedef struct client_frame_s
@@ -591,6 +595,8 @@ int SV_SpawnServer(qboolean bIsDemo, char *server, char *startspot);
 void SV_LoadEntities(void);
 void SV_ClearEntities(void);
 int SV_RegUserMsg(const char *pszName, int iSize);
+int SV_RegUserMsgEx(const char *pszName, int iSize, int iFlags);
+qboolean SV_IsExtendedUserMsg(int iMsg);
 qboolean StringToFilter(const char *s, ipfilter_t *f);
 USERID_t *SV_StringToUserID(const char *str);
 bool CanBeWrittenWithoutCIDR(const ipfilter_t &f);

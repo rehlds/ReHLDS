@@ -57,6 +57,14 @@ typedef struct clc_func_s
 	void(*pfnParse)(client_t *);
 } clc_func_t;
 
+// Parses the payload of one clc_netmessage subtype; reading stops at the end of the payload
+typedef struct netmsg_func_s
+{
+	int subtype;
+	char *pszname;
+	void(*pfnParse)(client_t *);
+} netmsg_func_t;
+
 extern edict_t *sv_player;
 extern sv_adjusted_positions_t truepositions[MAX_CLIENTS];
 extern qboolean g_balreadymoved;
@@ -110,6 +118,8 @@ void SV_ParseVoiceData(client_t *cl);
 void SV_IgnoreHLTV(client_t *cl);
 void SV_ParseCvarValue(client_t *cl);
 void SV_ParseCvarValue2(client_t *cl);
+void SV_ParseNetMessage(client_t *cl);
+void SV_ParseUserMessage(client_t *cl);
 void SV_ExecuteClientMessage(client_t *cl);
 qboolean SV_SetPlayer(int idnum);
 void SV_ShowServerinfo_f(void);

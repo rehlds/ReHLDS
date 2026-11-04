@@ -27,9 +27,6 @@
     <ClInclude Include="..\src\System.h">
       <Filter>src</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\game_shared\bitvec.h">
-      <Filter>game_shared</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\game_shared\perf_counter.h">
       <Filter>game_shared</Filter>
     </ClInclude>

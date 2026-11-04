@@ -29,6 +29,7 @@
 #include "maintypes.h"
 #include "rehlds_interfaces.h"
 #include "server.h"
+#include "protocol/negotiation.h"
 
 const int NET_DECOMPRESS_MAX_TIMES = 10;
 
@@ -93,6 +94,9 @@ private:
 	// in SV_ConnectClient_internal. 0 = not armed. See sv_reconnect_timeout.
 	double m_reconnectDeadline;
 #endif
+
+	// Agreed in SV_ConnectClient_internal, cleared when the client is dropped
+	CProtocolExtensionBits m_ProtocolExtensions;
 public:
 	CGameClient(int id, client_t* cl);
 
@@ -265,6 +269,8 @@ public:
 	virtual bool IsSentNewResponse();
 	virtual void SetSentNewResponse(bool state);
 
+	virtual bool HasProtocolExtension(ProtocolExtension extension);
+
 public:
 	bool GetSpawnedOnce() const { return m_bSpawnedOnce; }
 	void SetSpawnedOnce(bool spawned) { m_bSpawnedOnce = spawned; }
@@ -280,6 +286,9 @@ public:
 
 	// The game DLL changes them in PM_Move through playermove_t
 	movevars_t *GetMoveVarsForPlayerMove() { return &m_MoveVars; }
+
+	void SetProtocolExtensions(const CProtocolExtensionBits &extensions) { m_ProtocolExtensions = extensions; }
+	void ClearProtocolExtensions() { m_ProtocolExtensions.ClearAll(); }
 
 #ifdef REHLDS_FIXES
 	void SetupLocalGameTime() { m_localGameTimeBase = g_psv.time; }

@@ -619,9 +619,9 @@ const char *Info_FindLargestKey(const char *s, int maxsize)
 #endif
 }
 
-#ifdef REHLDS_FIXES
 qboolean Info_SetValueForStarKey(char *s, const char *key, const char *value, size_t maxsize)
 {
+#ifdef REHLDS_FIXES
 	char newArray[MAX_INFO_STRING], valueBuf[MAX_KV_LEN];
 
 	if (!key || !value)
@@ -732,10 +732,7 @@ qboolean Info_SetValueForStarKey(char *s, const char *key, const char *value, si
 	Q_strcat(s, newArray);
 
 	return TRUE;
-}
-#else
-void Info_SetValueForStarKey(char *s, const char *key, const char *value, int maxsize)
-{
+#else // REHLDS_FIXES
 	char newArray[MAX_INFO_STRING];
 	char *v;
 	int c;
@@ -743,32 +740,32 @@ void Info_SetValueForStarKey(char *s, const char *key, const char *value, int ma
 	if (!key || !value)
 	{
 		Con_Printf("Keys and values can't be null\n");
-		return;
+		return TRUE;
 	}
 
 	if (key[0] == 0)
 	{
 		Con_Printf("Keys can't be an empty string\n");
-		return;
+		return TRUE;
 	}
 
 	if (Q_strstr(key, "\\") || Q_strstr(value, "\\"))
 	{
 		Con_Printf("Can't use keys or values with a \\\n");
-		return;
+		return TRUE;
 	}
 
 	if (Q_strstr(key, "..") || Q_strstr(value, ".."))
 	{
 		// TODO: Why silently return?
 		//Con_Printf("Can't use keys or values with a ..\n");
-		return;
+		return TRUE;
 	}
 
 	if (Q_strstr(key, "\"") || Q_strstr(value, "\""))
 	{
 		Con_Printf("Can't use keys or values with a \"\n");
-		return;
+		return TRUE;
 	}
 
 	int keyLen = Q_strlen(key);
@@ -777,20 +774,20 @@ void Info_SetValueForStarKey(char *s, const char *key, const char *value, int ma
 	if (keyLen >= MAX_KV_LEN || valueLan >= MAX_KV_LEN)
 	{
 		Con_Printf("Keys and values must be < %i characters\n", MAX_KV_LEN);
-		return;
+		return TRUE;
 	}
 
 	if (!Q_UnicodeValidate(key) || !Q_UnicodeValidate(value))
 	{
 		Con_Printf("Keys and values must be valid utf8 text\n");
-		return;
+		return TRUE;
 	}
 
 	// Remove current key/value and return if we doesn't specified to set a value
 	Info_RemoveKey(s, key);
 	if (value[0] == 0)
 	{
-		return;
+		return TRUE;
 	}
 
 	// Create key/value pair
@@ -798,14 +795,14 @@ void Info_SetValueForStarKey(char *s, const char *key, const char *value, int ma
 	newArray[MAX_INFO_STRING - 1] = 0;
 
 	int neededLength = Q_strlen(newArray);
-	if ((int)Q_strlen(s) + neededLength >= maxsize)
+	if ((int)Q_strlen(s) + neededLength >= (int)maxsize)
 	{
 		// no more room in the buffer to add key/value
 		if (!Info_IsKeyImportant(key))
 		{
 			// no room to add setting
 			Con_Printf("Info string length exceeded\n");
-			return;
+			return TRUE;
 		}
 
 		// keep removing the largest key/values until we have a room
@@ -817,10 +814,10 @@ void Info_SetValueForStarKey(char *s, const char *key, const char *value, int ma
 			{
 				// no room to add setting
 				Con_Printf("Info string length exceeded\n");
-				return;
+				return TRUE;
 			}
 			Info_RemoveKey(s, largekey);
-		} while ((int)Q_strlen(s) + neededLength >= maxsize);
+		} while ((int)Q_strlen(s) + neededLength >= (int)maxsize);
 	}
 
 	// auto lowercase team
@@ -837,8 +834,10 @@ void Info_SetValueForStarKey(char *s, const char *key, const char *value, int ma
 		*s++ = c;
 	}
 	*s = 0;
+
+	return TRUE;
+#endif // REHLDS_FIXES
 }
-#endif
 
 void Info_SetValueForKey(char *s, const char *key, const char *value, int maxsize)
 {

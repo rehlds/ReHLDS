@@ -114,6 +114,10 @@ void MSG_WriteBuf(sizebuf_t *sb, int iSize, void *buf);
 void MSG_WriteAngle(sizebuf_t *sb, float f);
 void MSG_WriteHiresAngle(sizebuf_t *sb, float f);
 void MSG_WriteUsercmd(sizebuf_t *buf, usercmd_t *to, usercmd_t *from);
+int MSG_ByteSizeVarInt32(uint32 value);
+void MSG_WriteVarInt32(sizebuf_t *sb, uint32 value);
+void MSG_BeginNetMessage(sizebuf_t *sb, int subtype);
+void MSG_EndNetMessage(sizebuf_t *sb);
 void COM_BitOpsInit(void);
 void MSG_WriteOneBit(int nValue);
 void MSG_StartBitWriting(sizebuf_t *buf);
@@ -156,6 +160,7 @@ char *MSG_ReadStringLine(void);
 float MSG_ReadAngle(void);
 float MSG_ReadHiresAngle(void);
 void MSG_ReadUsercmd(usercmd_t *to, usercmd_t *from);
+uint32 MSG_ReadVarInt32(void);
 
 void SZ_Alloc(const char *name, sizebuf_t *buf, int startsize);
 void SZ_Clear(sizebuf_t *buf);

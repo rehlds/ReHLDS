@@ -39,7 +39,7 @@
 #include "rehlds_studio.h"
 
 #define REHLDS_API_VERSION_MAJOR 3
-#define REHLDS_API_VERSION_MINOR 17
+#define REHLDS_API_VERSION_MINOR 18
 
 //Steam_NotifyClientConnect hook
 typedef IHookChain<qboolean, IGameClient*, const void*, unsigned int> IRehldsHook_Steam_NotifyClientConnect;
@@ -270,6 +270,11 @@ typedef IVoidHookChainRegistry<sizebuf_t *> IRehldsHookRegistry_SV_SendResources
 typedef IVoidHookChain<model_t *, float, int, const vec_t *, const vec_t *, const unsigned char *, const unsigned char *, int, const edict_t *> IRehldsHook_SV_StudioSetupBones;
 typedef IVoidHookChainRegistry<model_t *, float, int, const vec_t *, const vec_t *, const unsigned char *, const unsigned char *, int, const edict_t *> IRehldsHookRegistry_SV_StudioSetupBones;
 
+//SV_ProtocolExtensions hook: called for a connect request that declares protocol extensions,
+//before the client gets a slot; the original function allows what the sv_rehlds_ext_* cvars allow
+typedef IVoidHookChain<netadr_t *, IProtocolNegotiation *> IRehldsHook_SV_ProtocolExtensions;
+typedef IVoidHookChainRegistry<netadr_t *, IProtocolNegotiation *> IRehldsHookRegistry_SV_ProtocolExtensions;
+
 class IRehldsHookchains {
 public:
 	virtual ~IRehldsHookchains() { }
@@ -331,6 +336,7 @@ public:
 	virtual IRehldsHookRegistry_SV_AllowPhysent* SV_AllowPhysent() = 0;
 	virtual IRehldsHookRegistry_SV_SendResources* SV_SendResources() = 0;
 	virtual IRehldsHookRegistry_SV_StudioSetupBones* SV_StudioSetupBones() = 0;
+	virtual IRehldsHookRegistry_SV_ProtocolExtensions* SV_ProtocolExtensions() = 0;
 };
 
 struct RehldsFuncs_t {
@@ -452,6 +458,11 @@ struct RehldsFuncs_t {
 
 	// The size of an info buffer of the engine
 	size_t(*Info_GetBufferSize)(const char *infobuffer);
+
+	// Protocol extensions
+	int(*RegUserMsgEx)(const char *pszName, int iSize, int iFlags);
+	bool(*RegClientUserMsg)(const char *pszName, ClientUserMsgHandler_t pfnHandler);
+	bool(*UnregClientUserMsg)(const char *pszName, ClientUserMsgHandler_t pfnHandler);
 };
 
 class IRehldsApi {

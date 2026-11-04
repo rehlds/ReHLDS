@@ -42,6 +42,28 @@ private:
 
 extern CStringCommandsRateLimiter g_StringCommandsRateLimiter;
 
+// clc_usermessage arrive from the first netchan packet, so connected clients are limited, not only active ones
+class CUserMessagesRateLimiter {
+public:
+	CUserMessagesRateLimiter();
+	void Frame();
+	void UserMessageIssued(unsigned int clientId);
+	void ClientConnected(unsigned int clientId);
+
+private:
+	void UpdateAverageRates(double dt);
+	void CheckBurstRate(unsigned int clientId);
+	void CheckAverageRate(unsigned int clientId);
+	void Punish(unsigned int clientId, float banMinutes, const char *reason, float rate);
+
+private:
+	float m_AverageUserMsgRate[MAX_CLIENTS];
+	int m_CurrentUserMsgs[MAX_CLIENTS];
+	double m_LastCheckTime;
+};
+
+extern CUserMessagesRateLimiter g_UserMessagesRateLimiter;
+
 class CDlFileRateLimiter {
 public:
 	CDlFileRateLimiter();

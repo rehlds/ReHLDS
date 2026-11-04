@@ -320,6 +320,11 @@ void EXT_FUNC Cvar_DirectSet_internal(struct cvar_s *var, const char *value)
 #ifdef REHLDS_API
 		Cvar_FireListeners(var->name, pszValue);
 #endif
+
+#ifdef REHLDS_FIXES
+		if (var->flags & FCVAR_REPLICATED)
+			SV_BroadcastReplicatedCvar(var);
+#endif
 	}
 }
 

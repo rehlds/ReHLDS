@@ -514,6 +514,14 @@ void EXT_FUNC CGameClient::SetSentNewResponse(bool state)
 	m_pClient->m_bSentNewResponse = state ? TRUE : FALSE;
 }
 
+bool EXT_FUNC CGameClient::HasProtocolExtension(ProtocolExtension extension)
+{
+	if (extension < 0 || extension >= PROTOCOL_EXT_COUNT)
+		return false;
+
+	return m_ProtocolExtensions.IsBitSet(extension);
+}
+
 CNetChan::CNetChan(netchan_t* chan)
 {
 	m_pNetChan = chan;

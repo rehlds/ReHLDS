@@ -330,6 +330,95 @@ void MSG_WriteUsercmd(sizebuf_t *buf, usercmd_t *to, usercmd_t *from)
 	MSG_EndBitWriting(buf);
 }
 
+// 7 value bits per byte, low bits first, the high bit set when another byte follows
+const int MAX_VARINT32_BYTES = 5;
+
+static int MSG_EncodeVarInt32(byte *out, uint32 value)
+{
+	int length = 0;
+
+	do
+	{
+		out[length] = value & 0x7F;
+		value >>= 7;
+
+		if (value)
+			out[length] |= 0x80;
+
+		length++;
+	} while (value);
+
+	return length;
+}
+
+int MSG_ByteSizeVarInt32(uint32 value)
+{
+	int size = 1;
+	while (value > 0x7F)
+	{
+		value >>= 7;
+		size++;
+	}
+
+	return size;
+}
+
+void MSG_WriteVarInt32(sizebuf_t *sb, uint32 value)
+{
+	byte encoded[MAX_VARINT32_BYTES];
+	SZ_Write(sb, encoded, MSG_EncodeVarInt32(encoded, value));
+}
+
+typedef struct netmsg_write_s
+{
+	sizebuf_t *pbuf; // NULL while no net message is open
+	int nBodyStart;
+} netmsg_write_t;
+
+netmsg_write_t netmsgwrite;
+
+// The length precedes the body on the wire but is known only once the body is written,
+// so MSG_EndNetMessage inserts it in front of the body
+void MSG_BeginNetMessage(sizebuf_t *sb, int subtype)
+{
+	if (netmsgwrite.pbuf)
+		Sys_Error("%s: net message %d started while another one is open", __func__, subtype);
+
+	MSG_WriteByte(sb, svc_netmessage);
+	MSG_WriteVarInt32(sb, subtype);
+
+	netmsgwrite.pbuf = sb;
+	netmsgwrite.nBodyStart = sb->cursize;
+}
+
+void MSG_EndNetMessage(sizebuf_t *sb)
+{
+	if (!netmsgwrite.pbuf)
+		Sys_Error("%s: called with no open net message", __func__);
+
+	if (netmsgwrite.pbuf != sb)
+		Sys_Error("%s: called on %s, the open net message is on another buffer", __func__, sb->buffername);
+
+	netmsgwrite.pbuf = NULL;
+
+	// An overflow cleared the buffer together with the message
+	if (sb->flags & SIZEBUF_OVERFLOWED)
+		return;
+
+	int bodySize = sb->cursize - netmsgwrite.nBodyStart;
+
+	byte length[MAX_VARINT32_BYTES];
+	int lengthSize = MSG_EncodeVarInt32(length, bodySize);
+
+	SZ_GetSpace(sb, lengthSize);
+	if (sb->flags & SIZEBUF_OVERFLOWED)
+		return;
+
+	byte *body = &sb->data[netmsgwrite.nBodyStart];
+	Q_memmove(body + lengthSize, body, bodySize);
+	Q_memcpy(body, length, lengthSize);
+}
+
 typedef struct bf_write_s
 {
 	// For enhanced and safe bits writing functions
@@ -1137,6 +1226,30 @@ void MSG_ReadUsercmd(usercmd_t *to, usercmd_t* from)
 #endif
 	MSG_EndBitReading(&net_message);
 	COM_NormalizeAngles(to->viewangles);
+}
+
+uint32 MSG_ReadVarInt32(void)
+{
+	uint32 value = 0;
+
+	for (int i = 0; i < MAX_VARINT32_BYTES; i++)
+	{
+		int c = MSG_ReadByte();
+		if (c == -1)
+			return 0;
+
+		// The fifth byte carries the top 4 bits of 32 and ends the value
+		if (i == MAX_VARINT32_BYTES - 1 && (c & 0xF0))
+			break;
+
+		value |= (uint32)(c & 0x7F) << (7 * i);
+
+		if (!(c & 0x80))
+			return value;
+	}
+
+	msg_badread = TRUE;
+	return 0;
 }
 
 #endif // MSG_Functions_region

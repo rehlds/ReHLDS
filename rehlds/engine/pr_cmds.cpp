@@ -42,7 +42,7 @@ vec_t gHullMaxs[4][3] = {
 		{ 16.0f,  16.0f,  18.0f },
 };
 
-unsigned char gMsgData[MAX_MSG_DATA];
+unsigned char gMsgData[MAX_EXT_MSG_DATA];
 
 edict_t *gMsgEntity;
 int gMsgDest;
@@ -60,7 +60,7 @@ int c_notvis;
 vec3_t vec_origin;
 int r_visframecount;
 
-sizebuf_t gMsgBuffer = { "MessageBegin/End", 0, gMsgData, sizeof(gMsgData), 0 };
+sizebuf_t gMsgBuffer = { "MessageBegin/End", 0, gMsgData, MAX_MSG_DATA, 0 };
 
 void EXT_FUNC PF_makevectors_I(const float *rgflVector)
 {
@@ -2144,6 +2144,7 @@ void EXT_FUNC PF_MessageBegin_I(int msg_dest, int msg_type, const float *pOrigin
 
 	gMsgBuffer.flags = SIZEBUF_ALLOW_OVERFLOW;
 	gMsgBuffer.cursize = 0;
+	gMsgBuffer.maxsize = SV_IsExtendedUserMsg(msg_type) ? MAX_EXT_MSG_DATA : MAX_MSG_DATA;
 }
 
 // Validates user message type and checks to see if it's variable length
@@ -2153,7 +2154,7 @@ qboolean Mesage_CheckUserMessageLength(UserMsg *msg, sizebuf_t *buf)
 	if (msg->iSize == -1)
 	{
 		// Limit packet sizes
-		if (buf->cursize > MAX_USER_MSG_DATA)
+		if (buf->cursize > MAX_USER_MSG_DATA && !SV_IsExtendedUserMsg(msg->iMsg))
 			Host_Error("%s: Refusing to send user message %s of %i bytes to client, user message size limit is %i bytes\n", __func__, msg->szName, buf->cursize, MAX_USER_MSG_DATA);
 
 		return TRUE;
@@ -2235,6 +2236,104 @@ void WriteMessageToBuffer(qboolean isVariableLengthMsg, sizebuf_t *buf)
 	MSG_WriteBuf(buf, gMsgBuffer.cursize, gMsgBuffer.data);
 }
 
+static void WriteExtendedUserMessageToClient(client_t *client, qboolean reliable, const UserMsg *pUserMsg)
+{
+	if (client->fakeclient)
+		return;
+
+	if (!client->pGameClient->HasProtocolExtension(PROTOCOL_EXT_USERMESSAGE))
+		return;
+
+	sizebuf_t *buf = reliable ? &client->netchan.message : &client->datagram;
+	if (!SV_WriteUserMessage(buf, pUserMsg->szName, gMsgBuffer.data, gMsgBuffer.cursize))
+	{
+		Con_DPrintf("%s: user message %s of %d bytes doesn't fit the %s buffer of %s\n", __func__,
+			pUserMsg->szName, gMsgBuffer.cursize, reliable ? "reliable" : "unreliable", client->name);
+	}
+}
+
+// Extended user messages are written to each recipient separately, only to clients that agreed
+// on PROTOCOL_EXT_USERMESSAGE, and never into the buffers shared by all clients
+static void WriteExtendedUserMessage(const UserMsg *pUserMsg)
+{
+	qboolean reliable;
+	int multicast = 0;
+
+	switch (gMsgDest)
+	{
+	case MSG_ONE:
+	case MSG_ALL:
+		reliable = TRUE;
+		break;
+
+	case MSG_ONE_UNRELIABLE:
+	case MSG_BROADCAST:
+		reliable = FALSE;
+		break;
+
+	case MSG_PVS:
+		reliable = FALSE;
+		multicast = MSG_FL_PVS;
+		break;
+
+	case MSG_PAS:
+		reliable = FALSE;
+		multicast = MSG_FL_PAS;
+		break;
+
+	// MSG_PVS_R goes by PAS as well, as PF_MessageEnd_I sends it; the recipients stay the same
+	case MSG_PVS_R:
+	case MSG_PAS_R:
+		reliable = TRUE;
+		multicast = MSG_FL_PAS;
+		break;
+
+	case MSG_INIT:
+		// The signon buffer is sent to every client as is, extended clients get this one after it
+		if (!SV_WriteUserMessage(&g_rehlds_sv.extendedSignon, pUserMsg->szName, gMsgBuffer.data, gMsgBuffer.cursize))
+			Con_DPrintf("%s: user message %s of %d bytes doesn't fit the signon buffer\n", __func__, pUserMsg->szName, gMsgBuffer.cursize);
+
+		return;
+
+	default:
+		Con_DPrintf("%s: user message %s can't be sent to destination %d\n", __func__, pUserMsg->szName, gMsgDest);
+		return;
+	}
+
+	if (gMsgDest == MSG_ONE || gMsgDest == MSG_ONE_UNRELIABLE)
+	{
+		int entnum = NUM_FOR_EDICT(gMsgEntity);
+		if (entnum < 1 || entnum > g_psvs.maxclients)
+			Host_Error("%s: not a client", __func__);
+
+		// The name travels with the message, so a client gets it before signon too
+		client_t *client = &g_psvs.clients[entnum - 1];
+		if (client->connected)
+			WriteExtendedUserMessageToClient(client, reliable, pUserMsg);
+
+		return;
+	}
+
+	int leafnum = multicast ? SV_PointLeafnum(gMsgOrigin) : 0;
+
+	for (int i = 0; i < g_psvs.maxclients; i++)
+	{
+		client_t *client = &g_psvs.clients[i];
+
+		if (multicast)
+		{
+			if (!client->active || !SV_ValidClientMulticast(client, leafnum, multicast))
+				continue;
+		}
+		else if (!client->active && !client->spawned)
+		{
+			continue;
+		}
+
+		WriteExtendedUserMessageToClient(client, reliable, pUserMsg);
+	}
+}
+
 void EXT_FUNC PF_MessageEnd_I(void)
 {
 	qboolean isVariableLengthMsg = FALSE;
@@ -2302,6 +2401,12 @@ void EXT_FUNC PF_MessageEnd_I(void)
 
 			// Moves pending new user messages to main list of sv_gpUserMsgs
 			SV_LinkUserMessages();
+		}
+
+		if (SV_IsExtendedUserMsg(pUserMsg->iMsg))
+		{
+			WriteExtendedUserMessage(pUserMsg);
+			return;
 		}
 #endif
 	}

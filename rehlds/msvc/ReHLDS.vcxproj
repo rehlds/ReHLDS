@@ -141,6 +141,9 @@
     </ClCompile>
     <ClCompile Include="..\rehlds\RehldsRuntimeConfig.cpp" />
     <ClCompile Include="..\rehlds\rehlds_security.cpp" />
+    <ClCompile Include="..\rehlds\protocol\negotiation.cpp" />
+    <ClCompile Include="..\rehlds\protocol\replicated_cvars.cpp" />
+    <ClCompile Include="..\rehlds\protocol\user_messages.cpp" />
     <ClCompile Include="..\rehlds\structSizeCheck.cpp" />
     <ClCompile Include="..\testsuite\anonymizer.cpp" />
     <ClCompile Include="..\testsuite\funccalls.cpp" />
@@ -185,6 +188,12 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\unittests\messagemngr_tests.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug Play|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release Play|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\unittests\protocol_ext_tests.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug Play|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release Play|Win32'">true</ExcludedFromBuild>
@@ -408,6 +417,7 @@
     <ClInclude Include="..\public\rehlds\osconfig.h" />
     <ClInclude Include="..\public\rehlds\progdefs.h" />
     <ClInclude Include="..\public\rehlds\progs.h" />
+    <ClInclude Include="..\public\rehlds\protocol_extensions.h" />
     <ClInclude Include="..\public\rehlds\rehlds_api.h" />
     <ClInclude Include="..\public\rehlds\rehlds_studio.h" />
     <ClInclude Include="..\public\rehlds\rehlds_interfaces.h" />
@@ -463,6 +473,9 @@
     <ClInclude Include="..\rehlds\rehlds_api_impl.h" />
     <ClInclude Include="..\rehlds\rehlds_interfaces_impl.h" />
     <ClInclude Include="..\rehlds\rehlds_security.h" />
+    <ClInclude Include="..\rehlds\protocol\negotiation.h" />
+    <ClInclude Include="..\rehlds\protocol\replicated_cvars.h" />
+    <ClInclude Include="..\rehlds\protocol\user_messages.h" />
     <ClInclude Include="..\testsuite\anonymizer.h" />
     <ClInclude Include="..\testsuite\funccalls.h" />
     <ClInclude Include="..\testsuite\memory.h" />

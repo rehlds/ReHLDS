@@ -209,8 +209,8 @@ typedef enum svc_commands_e
 	svc_sendcvarvalue,
 	svc_sendcvarvalue2,
 	svc_exec,
-	svc_reserve60,
-	svc_reserve61,
+	svc_netmessage,   // PROTOCOL_EXT_NETMESSAGE: [varint subtype][varint length][payload]
+	svc_usermessage,  // PROTOCOL_EXT_USERMESSAGE: [string name][varint size][body]
 	svc_reserve62,
 	svc_reserve63,
 // Let's just use an id of the first user message instead of the last svc_*
@@ -241,8 +241,17 @@ typedef enum clc_commands_e
 	clc_hltv,
 	clc_cvarvalue,
 	clc_cvarvalue2,
+	clc_netmessage,   // PROTOCOL_EXT_NETMESSAGE, same layout as svc_netmessage
+	clc_usermessage,  // PROTOCOL_EXT_USERMESSAGE, same layout as svc_usermessage
 	clc_endoflist = 255,
 } clc_commands_t;
+
+// Subtypes of svc_netmessage and clc_netmessage. Wire values, never reused.
+typedef enum netmessage_types_e
+{
+	NET_NOP = 0,        // both directions, payload ignored
+	NET_SETCONVAR = 1,  // server to client, PROTOCOL_EXT_REPLICATEDCVARS
+} netmessage_types_t;
 
 enum
 {

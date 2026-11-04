@@ -49,10 +49,13 @@ enum
 	AMBIENT_SOUND_NOT_LOOPING	= BIT(5)
 };
 
-// The most a message written between MessageBegin and MessageEnd holds
+// MessageBegin/End limit of a message without USERMSG_EXTENDED
 const int MAX_MSG_DATA = 512;
 
-extern unsigned char gMsgData[MAX_MSG_DATA];
+// Extended user messages may fill a whole reliable netchan message
+const int MAX_EXT_MSG_DATA = NET_MAX_PAYLOAD;
+
+extern unsigned char gMsgData[MAX_EXT_MSG_DATA];
 extern sizebuf_t gMsgBuffer;
 extern edict_t *gMsgEntity;
 extern int gMsgDest;

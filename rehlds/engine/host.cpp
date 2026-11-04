@@ -521,6 +521,7 @@ void SV_DropClient_internal(client_t *cl, qboolean crash, const char *string)
 
 #ifdef REHLDS_FIXES
 	cl->pGameClient->SetSpawnedOnce(false);
+	cl->pGameClient->ClearProtocolExtensions();
 #endif // REHLDS_FIXES
 
 	SV_SendFullClientUpdateForAll(cl);
@@ -1151,6 +1152,8 @@ int Host_Init(quakeparms_t *parms)
 
 	//Rehlds Security
 	Rehlds_Security_Init();
+
+	Rehlds_ProtocolExt_Init();
 
 
 	Q_snprintf(versionString, sizeof(versionString), "%s,%i,%i", gpszVersionString, PROTOCOL_VERSION, build_number());

@@ -26,6 +26,8 @@
 #define FCVAR_PRINTABLEONLY		(1<<7)  // This cvar's string cannot contain unprintable characters ( e.g., used for player name etc ).
 #define FCVAR_UNLOGGED			(1<<8)  // If this is a FCVAR_SERVER, don't log changes to the log file / console if we are creating a log
 #define FCVAR_NOEXTRAWHITEPACE	(1<<9)  // strip trailing/leading white space from this cvar
+// Bits 10-13 are client flags of the HL SDK
+#define FCVAR_REPLICATED		(1<<22) // value is sent to clients that agreed on PROTOCOL_EXT_REPLICATEDCVARS; never with FCVAR_PROTECTED
 
 typedef struct cvar_s
 {

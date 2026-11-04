@@ -39,6 +39,9 @@
     <Filter Include="rehlds">
       <UniqueIdentifier>{a54a9aa9-f95b-4199-bdf0-9640fdb5590b}</UniqueIdentifier>
     </Filter>
+    <Filter Include="rehlds\protocol">
+      <UniqueIdentifier>{5d3f8b2e-7c41-4a9e-b6d0-2e8f1c9a4b73}</UniqueIdentifier>
+    </Filter>
     <Filter Include="unittests">
       <UniqueIdentifier>{10ba586f-5f90-4a4b-940c-287810a7e9bc}</UniqueIdentifier>
     </Filter>
@@ -316,6 +319,18 @@
     </ClCompile>
     <ClCompile Include="..\rehlds\rehlds_security.cpp">
       <Filter>rehlds</Filter>
+    </ClCompile>
+    <ClCompile Include="..\rehlds\protocol\negotiation.cpp">
+      <Filter>rehlds\protocol</Filter>
+    </ClCompile>
+    <ClCompile Include="..\rehlds\protocol\replicated_cvars.cpp">
+      <Filter>rehlds\protocol</Filter>
+    </ClCompile>
+    <ClCompile Include="..\rehlds\protocol\user_messages.cpp">
+      <Filter>rehlds\protocol</Filter>
+    </ClCompile>
+    <ClCompile Include="..\unittests\protocol_ext_tests.cpp">
+      <Filter>unittests</Filter>
     </ClCompile>
     <ClCompile Include="..\engine\sse_mathfun.cpp">
       <Filter>engine</Filter>
@@ -838,6 +853,9 @@
     <ClInclude Include="..\public\rehlds\rehlds_api.h">
       <Filter>public\rehlds</Filter>
     </ClInclude>
+    <ClInclude Include="..\public\rehlds\protocol_extensions.h">
+      <Filter>public\rehlds</Filter>
+    </ClInclude>
     <ClInclude Include="..\public\rehlds\pr_dlls.h">
       <Filter>public\rehlds</Filter>
     </ClInclude>
@@ -846,6 +864,15 @@
     </ClInclude>
     <ClInclude Include="..\rehlds\rehlds_interfaces_impl.h">
       <Filter>rehlds</Filter>
+    </ClInclude>
+    <ClInclude Include="..\rehlds\protocol\negotiation.h">
+      <Filter>rehlds\protocol</Filter>
+    </ClInclude>
+    <ClInclude Include="..\rehlds\protocol\replicated_cvars.h">
+      <Filter>rehlds\protocol</Filter>
+    </ClInclude>
+    <ClInclude Include="..\rehlds\protocol\user_messages.h">
+      <Filter>rehlds\protocol</Filter>
     </ClInclude>
     <ClInclude Include="..\rehlds\rehlds_api_impl.h">
       <Filter>rehlds</Filter>

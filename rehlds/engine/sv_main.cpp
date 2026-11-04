@@ -66,6 +66,10 @@ int sv_decalnamecount;
 UserMsg *sv_gpNewUserMsgs;
 UserMsg *sv_gpUserMsgs;
 
+// Ids of USERMSG_EXTENDED messages. MessageBegin asks about every message it starts,
+// so a bit per id answers without walking the user message lists.
+CBitVec<MAX_USERMESSAGES> sv_extendedusermsgs;
+
 playermove_t g_svmove;
 
 qboolean g_bOutOfDateRestart;
@@ -188,11 +192,12 @@ cvar_t sv_enableoldqueries = { "sv_enableoldqueries", "0", 0, 0.0f, NULL };
 
 cvar_t sv_instancedbaseline = { "sv_instancedbaseline", "1", 0, 0.0f, NULL };
 cvar_t sv_contact = { "sv_contact", "", FCVAR_SERVER, 0.0f, NULL };
-cvar_t sv_maxupdaterate = { "sv_maxupdaterate", "30.0", 0, 0.0f, NULL };
-cvar_t sv_minupdaterate = { "sv_minupdaterate", "10.0", 0, 0.0f, NULL };
+// sv_min/maxupdaterate and sv_min/maxrate are replicated: a client clamps its own cl_updaterate and rate by them
+cvar_t sv_maxupdaterate = { "sv_maxupdaterate", "30.0", FCVAR_REPLICATED, 0.0f, NULL };
+cvar_t sv_minupdaterate = { "sv_minupdaterate", "10.0", FCVAR_REPLICATED, 0.0f, NULL };
 cvar_t sv_filterban = { "sv_filterban", "1", 0, 0.0f, NULL };
-cvar_t sv_minrate = { "sv_minrate", "0", FCVAR_SERVER, 0.0f, NULL };
-cvar_t sv_maxrate = { "sv_maxrate", "0", FCVAR_SERVER, 0.0f, NULL };
+cvar_t sv_minrate = { "sv_minrate", "0", FCVAR_SERVER | FCVAR_REPLICATED, 0.0f, NULL };
+cvar_t sv_maxrate = { "sv_maxrate", "0", FCVAR_SERVER | FCVAR_REPLICATED, 0.0f, NULL };
 cvar_t sv_logrelay = { "sv_logrelay", "0", 0, 0.0f, NULL };
 
 cvar_t violence_hblood = { "violence_hblood", "1", 0, 0.0f, NULL };
@@ -1521,6 +1526,10 @@ void SV_SendUserReg(sizebuf_t *msg, UserMsg *pUserMsgs)
 
 	for (UserMsg *pMsg = pUserMsgs; pMsg; pMsg = pMsg->next)
 	{
+		// svc_usermessage carries the name, the client needs no registration
+		if (SV_IsExtendedUserMsg(pMsg->iMsg))
+			continue;
+
 		MSG_WriteByte(msg, svc_newusermsg);
 		MSG_WriteByte(msg, pMsg->iMsg);
 		MSG_WriteByte(msg, pMsg->iSize);
@@ -1587,6 +1596,12 @@ void SV_New_f(void)
 
 	SV_SendUserReg(&msg, sv_gpUserMsgs);
 	host_client->hasusrmsgs = TRUE;
+
+#ifdef REHLDS_FIXES
+	// The client has the server values before the first frame it predicts
+	if (host_client->pGameClient->HasProtocolExtension(PROTOCOL_EXT_REPLICATEDCVARS))
+		SV_WriteReplicatedCvars(&msg);
+#endif
 
 	// TODO: set userinfo to be sent?
 	//host_client->sendinfo = true;
@@ -1703,6 +1718,18 @@ void EXT_FUNC SV_Spawn_f_internal(void)
 #endif // REHLDS_FIXES
 
 		SZ_Write(&msg, g_psv.signon.data, g_psv.signon.cursize);
+
+#ifdef REHLDS_FIXES
+		if (host_client->pGameClient->HasProtocolExtension(PROTOCOL_EXT_USERMESSAGE))
+		{
+			sizebuf_t *extendedSignon = &g_rehlds_sv.extendedSignon;
+			if (SZ_HasSpace(&msg, extendedSignon->cursize))
+				SZ_Write(&msg, extendedSignon->data, extendedSignon->cursize);
+			else
+				Con_DPrintf("%s: extended signon of %d bytes doesn't fit for %s\n", __func__, extendedSignon->cursize, host_client->name);
+		}
+#endif // REHLDS_FIXES
+
 		SV_WriteSpawn(&msg);
 
 #ifdef REHLDS_FIXES
@@ -2428,6 +2455,28 @@ void EXT_FUNC SV_ConnectClient_internal(void)
 	if (!SV_FinishCertificateCheck(&adr, nAuthProtocol, szRawCertificate, userinfo))
 		return;
 
+#ifdef REHLDS_FIXES
+	CProtocolNegotiation negotiation;
+	if (!negotiation.ParseRequest(protinfo))
+	{
+		SV_RejectConnection(&adr, "Invalid protocol extensions in connect command\n");
+		return;
+	}
+
+	if (negotiation.HasRequest())
+	{
+		g_RehldsHookchains.m_SV_ProtocolExtensions.callChain(SV_ProtocolExtensions_internal, &adr, &negotiation);
+		negotiation.Agree();
+	}
+
+	const char *missingExtension = negotiation.FindMissingRequired();
+	if (missingExtension)
+	{
+		SV_RejectConnection(&adr, "This server requires protocol extension \"%s\".\n", missingExtension);
+		return;
+	}
+#endif // REHLDS_FIXES
+
 	if (reconnect)
 	{
 #ifndef REHLDS_FIXES
@@ -2565,13 +2614,27 @@ void EXT_FUNC SV_ConnectClient_internal(void)
 	// Client (re)established its connection, so it obeyed the level-change "reconnect" command.
 	// Disarm the deadline armed by SV_InactivateClients (an in-place reconnect clears it in SV_New_f).
 	host_client->pGameClient->SetReconnectDeadline(0.0);
+
+	host_client->pGameClient->SetProtocolExtensions(negotiation.GetAgreed());
+#endif // REHLDS_FIXES
+
+	// Quoted info string with the agreed extensions, only for a client that sent "pext"
+	char extensionsReply[PROTOCOL_EXT_REPLY_SIZE + 3] = "";
+#ifdef REHLDS_FIXES
+	if (negotiation.HasRequest())
+	{
+		char reply[PROTOCOL_EXT_REPLY_SIZE];
+		negotiation.BuildReply(reply, sizeof(reply));
+		Q_snprintf(extensionsReply, sizeof(extensionsReply), " \"%s\"", reply);
+	}
 #endif // REHLDS_FIXES
 
 	bIsSecure = Steam_GSBSecure();
-	Netchan_OutOfBandPrint(NS_SERVER, adr, "%c %i \"%s\" %i %i", S2C_CONNECTION, host_client->userid, NET_AdrToString(host_client->netchan.remote_address), bIsSecure, build_number()
+	Netchan_OutOfBandPrint(NS_SERVER, adr, "%c %i \"%s\" %i %i%s", S2C_CONNECTION, host_client->userid, NET_AdrToString(host_client->netchan.remote_address), bIsSecure, build_number()
 #ifdef REHLDS_FIXES
 		+ 5970 // Send a fake build number greater than 5970 because the client checks for an older server build into CL_Move
 #endif
+		, extensionsReply
 	);
 
 	Log_Printf("\"%s<%i><%s><>\" connected, address \"%s\"\n", name, host_client->userid, SV_GetClientIDString(host_client), NET_AdrToString(host_client->netchan.remote_address));
@@ -6555,6 +6618,12 @@ int SV_SpawnServer(qboolean bIsDemo, char *server, char *startspot)
 #endif
 	g_psv.signon.cursize = 0;
 
+	g_rehlds_sv.extendedSignon.buffername = "Server Extended Signon Buffer";
+	g_rehlds_sv.extendedSignon.data = g_rehlds_sv.extendedSignonData;
+	g_rehlds_sv.extendedSignon.maxsize = sizeof(g_rehlds_sv.extendedSignonData);
+	g_rehlds_sv.extendedSignon.cursize = 0;
+	g_rehlds_sv.extendedSignon.flags = SIZEBUF_ALLOW_OVERFLOW;
+
 	g_psv.num_edicts = g_psvs.maxclients + 1;
 
 	cl = g_psvs.clients;
@@ -6742,6 +6811,33 @@ void SV_ClearEntities(void)
 
 int EXT_FUNC SV_RegUserMsg(const char *pszName, int iSize)
 {
+	return SV_RegUserMsgEx(pszName, iSize, 0);
+}
+
+// Returns the id of the message registered under this name, 0 when it is registered the
+// other way, with or without USERMSG_EXTENDED, -1 when the name is not registered in the list
+static int SV_FindUserMsg(UserMsg *pList, const char *pszName, int iFlags)
+{
+	for (UserMsg *pMsg = pList; pMsg; pMsg = pMsg->next)
+	{
+		if (Q_strcmp(pszName, pMsg->szName))
+			continue;
+
+		qboolean bExtended = (iFlags & USERMSG_EXTENDED) ? TRUE : FALSE;
+		if (SV_IsExtendedUserMsg(pMsg->iMsg) != bExtended)
+		{
+			Con_Printf("%s: Message %s is already registered %s USERMSG_EXTENDED\n", __func__, pszName, bExtended ? "without" : "with");
+			return 0;
+		}
+
+		return pMsg->iMsg;
+	}
+
+	return -1;
+}
+
+int EXT_FUNC SV_RegUserMsgEx(const char *pszName, int iSize, int iFlags)
+{
 	if (giNextUserMsg >= MAX_USERMESSAGES)
 	{
 		Con_Printf("%s: Not enough room to register message %s, limit: %i\n", __func__, pszName, MAX_USERMESSAGES);
@@ -6757,20 +6853,23 @@ int EXT_FUNC SV_RegUserMsg(const char *pszName, int iSize)
 		return 0;
 	}
 
-	if (iSize > MAX_USER_MSG_DATA)
+#ifndef REHLDS_FIXES
+	if (iFlags & USERMSG_EXTENDED)
+	{
+		Con_Printf("%s: Extended user messages are not supported by this build: %s\n", __func__, pszName);
+		return 0;
+	}
+#endif
+
+	if (iSize > ((iFlags & USERMSG_EXTENDED) ? MAX_EXT_MSG_DATA : MAX_USER_MSG_DATA))
 		return 0;
 
-	for (UserMsg *pMsg = sv_gpUserMsgs; pMsg; pMsg = pMsg->next)
-	{
-		if (!Q_strcmp(pszName, pMsg->szName))
-			return pMsg->iMsg;
-	}
+	int iMsg = SV_FindUserMsg(sv_gpUserMsgs, pszName, iFlags);
+	if (iMsg == -1)
+		iMsg = SV_FindUserMsg(sv_gpNewUserMsgs, pszName, iFlags);
 
-	for (UserMsg *pMsg = sv_gpNewUserMsgs; pMsg; pMsg = pMsg->next)
-	{
-		if (!Q_strcmp(pszName, pMsg->szName))
-			return pMsg->iMsg;
-	}
+	if (iMsg != -1)
+		return iMsg;
 
 	UserMsg *pNewMsg = (UserMsg *)Mem_ZeroMalloc(sizeof(UserMsg));
 	pNewMsg->iMsg = giNextUserMsg++;
@@ -6779,7 +6878,18 @@ int EXT_FUNC SV_RegUserMsg(const char *pszName, int iSize)
 	pNewMsg->next = sv_gpNewUserMsgs;
 	sv_gpNewUserMsgs = pNewMsg;
 
+	if (iFlags & USERMSG_EXTENDED)
+		sv_extendedusermsgs.Set(pNewMsg->iMsg);
+
 	return pNewMsg->iMsg;
+}
+
+qboolean SV_IsExtendedUserMsg(int iMsg)
+{
+	if (iMsg < 0 || iMsg >= MAX_USERMESSAGES)
+		return FALSE;
+
+	return sv_extendedusermsgs.IsBitSet(iMsg) ? TRUE : FALSE;
 }
 
 uint32_t CIDRToMask(int cidr)

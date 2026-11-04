@@ -517,6 +517,16 @@ void SV_SendUserReg_api(sizebuf_t *msg)
 	SV_SendUserReg(msg, sv_gpNewUserMsgs);
 }
 
+bool EXT_FUNC RegClientUserMsg_api(const char *pszName, ClientUserMsgHandler_t pfnHandler)
+{
+	return g_ClientUserMessages.Register(pszName, pfnHandler);
+}
+
+bool EXT_FUNC UnregClientUserMsg_api(const char *pszName, ClientUserMsgHandler_t pfnHandler)
+{
+	return g_ClientUserMessages.Unregister(pszName, pfnHandler);
+}
+
 CRehldsServerStatic g_RehldsServerStatic;
 CRehldsServerData g_RehldsServerData;
 CRehldsHookchains g_RehldsHookchains;
@@ -624,6 +634,9 @@ RehldsFuncs_t g_RehldsApiFuncs =
 	&SetServerPause,
 	&Info_SetBufferValue_api,
 	&Info_GetBufferSize_api,
+	&SV_RegUserMsgEx,
+	&RegClientUserMsg_api,
+	&UnregClientUserMsg_api,
 };
 
 bool EXT_FUNC SV_EmitSound2_internal(edict_t *entity, IGameClient *pReceiver, int channel, const char *sample, float volume, float attenuation, int flags, int pitch, int emitFlags, const float *pOrigin)
@@ -953,6 +966,10 @@ IRehldsHookRegistry_SV_SendResources* CRehldsHookchains::SV_SendResources() {
 
 IRehldsHookRegistry_SV_StudioSetupBones* CRehldsHookchains::SV_StudioSetupBones() {
 	return &m_SV_StudioSetupBones;
+}
+
+IRehldsHookRegistry_SV_ProtocolExtensions* CRehldsHookchains::SV_ProtocolExtensions() {
+	return &m_SV_ProtocolExtensions;
 }
 
 int EXT_FUNC CRehldsApi::GetMajorVersion()

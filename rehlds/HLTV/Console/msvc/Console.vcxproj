@@ -17,7 +17,6 @@
     <ClInclude Include="..\..\..\common\TokenLine.h" />
     <ClInclude Include="..\..\..\common\minidump.h" />
     <ClInclude Include="..\..\..\engine\mem.h" />
-    <ClInclude Include="..\..\..\game_shared\bitvec.h" />
     <ClInclude Include="..\..\..\game_shared\perf_counter.h" />
     <ClInclude Include="..\..\..\game_shared\voice_common.h" />
     <ClInclude Include="..\..\common\common_hltv.h" />

@@ -52,6 +52,8 @@
 #include "rehlds_messagemngr_impl.h"
 #include "rehlds_studio_impl.h"
 #include "rehlds_security.h"
+#include "protocol/user_messages.h"
+#include "protocol/replicated_cvars.h"
 
 #include "dlls/cdll_dll.h"
 #include "hltv.h"

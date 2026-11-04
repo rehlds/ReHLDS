@@ -185,6 +185,9 @@ set(ENGINE_SRCS
 	rehlds/rehlds_messagemngr_impl.cpp
 	rehlds/rehlds_studio_impl.cpp
 	rehlds/rehlds_security.cpp
+	rehlds/protocol/negotiation.cpp
+	rehlds/protocol/replicated_cvars.cpp
+	rehlds/protocol/user_messages.cpp
 )
 
 set(UNITTESTS_SRCS
@@ -195,6 +198,7 @@ set(UNITTESTS_SRCS
 	unittests/info_tests.cpp
 	unittests/mathlib_tests.cpp
 	unittests/messagemngr_tests.cpp
+	unittests/protocol_ext_tests.cpp
 	unittests/rehlds_tests_shared.cpp
 	unittests/rehlds_tests_shared.h
 	unittests/security_tests.cpp

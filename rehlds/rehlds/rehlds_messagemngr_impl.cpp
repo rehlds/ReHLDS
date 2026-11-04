@@ -943,8 +943,9 @@ bool MessageManagerImpl::MessageBegin(int msg_dest, int msg_id, const float *pOr
 		return false;
 	}
 
-	// Check if there are hooks registered for the message type
-	m_inhook = (m_hooks[msg_id] && m_hooks[msg_id]->getCount() > 0);
+	// Check if there are hooks registered for the message type.
+	// Extended user messages don't fit the message storage, so hooks never see them.
+	m_inhook = (m_hooks[msg_id] && m_hooks[msg_id]->getCount() > 0) && !SV_IsExtendedUserMsg(msg_id);
 
 	if (m_inhook)
 	{

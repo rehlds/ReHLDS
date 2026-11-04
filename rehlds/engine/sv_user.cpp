@@ -69,7 +69,14 @@ clc_func_t sv_clcfuncs[] = {
 	{ clc_hltv,            "clc_hltv",            &SV_IgnoreHLTV               },
 	{ clc_cvarvalue,       "clc_cvarvalue",       &SV_ParseCvarValue           },
 	{ clc_cvarvalue2,      "clc_cvarvalue2",      &SV_ParseCvarValue2          },
+	{ clc_netmessage,      "clc_netmessage",      &SV_ParseNetMessage          },
+	{ clc_usermessage,     "clc_usermessage",     &SV_ParseUserMessage         },
 	{ clc_endoflist,       "End of List",         nullptr                      },
+};
+
+// Subtypes a client may send in clc_netmessage; anything else is skipped
+static netmsg_func_t sv_netmsgfuncs[] = {
+	{ NET_NOP,             "NET_NOP",             nullptr                      },
 };
 
 // Layout of resource_t::rguc_reserved for a model with a bounds check:
@@ -1774,10 +1781,108 @@ void SV_ParseCvarValue2(client_t *cl)
 	Con_DPrintf("Cvar query response: name:%s, request ID %d, cvar:%s, value:%s\n", cl->name, requestID, cvarName, value);
 }
 
+void SV_ParseNetMessage(client_t *cl)
+{
+	uint32 subtype = MSG_ReadVarInt32();
+	uint32 length = MSG_ReadVarInt32();
+	if (msg_badread)
+		return;
+
+	if (length > (uint32)(net_message.cursize - msg_readcount))
+	{
+		msg_badread = TRUE;
+		return;
+	}
+
+	int end = msg_readcount + length;
+
+	for (const netmsg_func_t &func : sv_netmsgfuncs)
+	{
+		if ((uint32)func.subtype != subtype || !func.pfnParse)
+			continue;
+
+		// The handler can't read past its payload
+		int cursize = net_message.cursize;
+		net_message.cursize = end;
+		func.pfnParse(cl);
+		net_message.cursize = cursize;
+
+		if (!msg_badread && msg_readcount != end)
+			Con_DPrintf("%s: %s from %s left %d of %u bytes unread\n", __func__, func.pszname, cl->name, end - msg_readcount, length);
+
+		break;
+	}
+
+	msg_readcount = end;
+}
+
+void SV_ParseUserMessage(client_t *cl)
+{
+	char name[MAX_USERMESSAGES_LENGTH];
+
+	const char *s = MSG_ReadString();
+	if (msg_badread)
+		return;
+
+	if (Q_strlen(s) >= sizeof(name))
+	{
+		msg_badread = TRUE;
+		return;
+	}
+
+	Q_strcpy(name, s);
+
+	uint32 size = MSG_ReadVarInt32();
+	if (msg_badread)
+		return;
+
+	if (size > (uint32)(net_message.cursize - msg_readcount))
+	{
+		msg_badread = TRUE;
+		return;
+	}
+
+	const uint8 *data = &net_message.data[msg_readcount];
+	msg_readcount += size;
+
+#ifdef REHLDS_FIXES
+	g_UserMessagesRateLimiter.UserMessageIssued(cl - g_psvs.clients);
+
+	if (!cl->connected)
+		return; // dropped for flooding
+#endif
+
+	if (!g_ClientUserMessages.Dispatch(cl->pGameClient, name, data, size))
+		Con_DPrintf("%s: no receiver for %s from %s\n", __func__, name, cl->name);
+}
+
+// Opcodes of protocol extensions exist only for clients that agreed on the extension
+static bool SV_IsKnownClientMessage(IGameClient *client, uint8 opcode)
+{
+	if (opcode <= clc_cvarvalue2)
+		return true;
+
+	switch (opcode)
+	{
+	case clc_netmessage:
+		return client->HasProtocolExtension(PROTOCOL_EXT_NETMESSAGE);
+
+	case clc_usermessage:
+		return client->HasProtocolExtension(PROTOCOL_EXT_USERMESSAGE);
+
+	default:
+		return false;
+	}
+}
+
 void EXT_FUNC SV_HandleClientMessage_api(IGameClient* client, uint8 opcode)
 {
 	client_t* cl = client->GetClient();
+#ifdef REHLDS_FIXES
+	if (!SV_IsKnownClientMessage(client, opcode))
+#else
 	if (opcode < clc_bad || opcode > clc_cvarvalue2)
+#endif
 	{
 		// TODO: Are we forced to use msg_badread for break the loop.
 		static_assert(REHLDS_API_VERSION_MAJOR <= 3, "Bump major API DETECTED!! You shall rework the hookchain, make function returnable");
