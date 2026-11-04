@@ -189,7 +189,10 @@ jobs:
   testdemos:
     name: 'Test demos'
     runs-on: ubuntu-24.04
-    container: rehldsorg/testdemos:latest
+    # The wine of rehldsorg/testdemos makes system calls the default seccomp filter of Docker refuses
+    container:
+      image: rehldsorg/testdemos:latest
+      options: --security-opt seccomp=unconfined
     needs: [windows]
     defaults:
       run:
