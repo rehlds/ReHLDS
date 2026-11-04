@@ -31,12 +31,17 @@
 // 0 - off, 1 - allowed, 2 - required: a client without the extension is rejected
 cvar_t sv_rehlds_ext_usermessage = { "sv_rehlds_ext_usermessage", "1", 0, 1.0f, NULL };
 cvar_t sv_rehlds_ext_replicatedcvars = { "sv_rehlds_ext_replicatedcvars", "1", 0, 1.0f, NULL };
+cvar_t sv_rehlds_ext_rate = { "sv_rehlds_ext_rate", "1", 0, 1.0f, NULL };
 cvar_t sv_rehlds_ext_packetsize = { "sv_rehlds_ext_packetsize", "1", 0, 1.0f, NULL };
 cvar_t sv_rehlds_ext_packetentities = { "sv_rehlds_ext_packetentities", "1", 0, 1.0f, NULL };
 
 // Server limits of the extension parameters; the engine clamps them to what it handles
 cvar_t sv_rehlds_maxpacketsize = { "sv_rehlds_maxpacketsize", "131072", 0, 131072.0f, NULL };
 cvar_t sv_rehlds_maxpacketentities = { "sv_rehlds_maxpacketentities", "512", 0, 512.0f, NULL };
+
+// Rate bounds of clients with PROTOCOL_EXT_RATE; sv_maxrate and sv_minrate bound the others
+cvar_t sv_rehlds_maxrate = { "sv_rehlds_maxrate", "0", FCVAR_REPLICATED, 0.0f, NULL };
+cvar_t sv_rehlds_minrate = { "sv_rehlds_minrate", "0", FCVAR_REPLICATED, 0.0f, NULL };
 
 enum
 {
@@ -63,6 +68,7 @@ static const protocol_ext_desc_t g_ProtocolExtensions[] =
 	{ PROTOCOL_EXT_NETMESSAGE,      "netmessage",      NULL,                           -1,                      NULL,    NULL,                         0,                   0                       },
 	{ PROTOCOL_EXT_USERMESSAGE,     "usermessage",     &sv_rehlds_ext_usermessage,     -1,                      NULL,    NULL,                         0,                   0                       },
 	{ PROTOCOL_EXT_REPLICATEDCVARS, "replicatedcvars", &sv_rehlds_ext_replicatedcvars, PROTOCOL_EXT_NETMESSAGE, NULL,    NULL,                         0,                   0                       },
+	{ PROTOCOL_EXT_RATE,            "rate",            &sv_rehlds_ext_rate,            -1,                      NULL,    NULL,                         0,                   0                       },
 	{ PROTOCOL_EXT_PACKETSIZE,      "packetsize",      &sv_rehlds_ext_packetsize,      -1,                      "psize", &sv_rehlds_maxpacketsize,     NET_MAX_PACKET,      NET_MAX_EXT_PACKET      },
 	{ PROTOCOL_EXT_PACKETENTITIES,  "packetentities",  &sv_rehlds_ext_packetentities,  PROTOCOL_EXT_PACKETSIZE, "pents", &sv_rehlds_maxpacketentities, MAX_PACKET_ENTITIES, MAX_EXT_PACKET_ENTITIES },
 };
@@ -327,12 +333,15 @@ void Rehlds_ProtocolExt_Init()
 #ifdef REHLDS_FIXES
 	Cvar_RegisterVariable(&sv_rehlds_ext_usermessage);
 	Cvar_RegisterVariable(&sv_rehlds_ext_replicatedcvars);
+	Cvar_RegisterVariable(&sv_rehlds_ext_rate);
 	Cvar_RegisterVariable(&sv_rehlds_ext_packetsize);
 	Cvar_RegisterVariable(&sv_rehlds_ext_packetentities);
 	Cvar_RegisterVariable(&sv_rehlds_maxpacketsize);
 	Cvar_RegisterVariable(&sv_rehlds_maxpacketentities);
 	Cvar_RegisterVariable(&sv_rehlds_splitrate);
 	Cvar_RegisterVariable(&sv_rehlds_maxroutable);
+	Cvar_RegisterVariable(&sv_rehlds_maxrate);
+	Cvar_RegisterVariable(&sv_rehlds_minrate);
 #endif
 }
 

@@ -231,7 +231,7 @@ TEST(NegotiationAgreement, ProtocolExt, 1000)
 		Negotiate(&negotiation, "\\prot\\3\\pext\\ff");
 		CHECK("request seen", negotiation.HasRequest());
 		AgreedHex(negotiation, hex);
-		ZSTR_EQUAL("only implemented extensions", "7", hex);
+		ZSTR_EQUAL("only implemented extensions", "f", hex);
 		CHECK("nothing required", !negotiation.FindMissingRequired());
 	}
 
@@ -249,6 +249,23 @@ TEST(NegotiationAgreement, ProtocolExt, 1000)
 		Negotiate(&negotiation, "\\pext\\4");
 		AgreedHex(negotiation, hex);
 		ZSTR_EQUAL("replicatedcvars without netmessage", "0", hex);
+	}
+
+	{
+		CExtensionSettings settings(1, 1);
+		CProtocolNegotiation negotiation;
+		Negotiate(&negotiation, "\\pext\\8");
+		AgreedHex(negotiation, hex);
+		ZSTR_EQUAL("rate", "8", hex);
+	}
+
+	{
+		CExtensionSettings settings(1, 1);
+		CCvarValue rate(sv_rehlds_ext_rate, 0);
+		CProtocolNegotiation negotiation;
+		Negotiate(&negotiation, "\\pext\\8");
+		AgreedHex(negotiation, hex);
+		ZSTR_EQUAL("rate switched off", "0", hex);
 	}
 
 	{

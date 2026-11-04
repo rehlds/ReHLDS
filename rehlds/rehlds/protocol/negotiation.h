@@ -47,10 +47,13 @@ const int MAX_EXT_PACKET_ENTITIES = 512;
 
 extern cvar_t sv_rehlds_ext_usermessage;
 extern cvar_t sv_rehlds_ext_replicatedcvars;
+extern cvar_t sv_rehlds_ext_rate;
 extern cvar_t sv_rehlds_ext_packetsize;
 extern cvar_t sv_rehlds_ext_packetentities;
 extern cvar_t sv_rehlds_maxpacketsize;
 extern cvar_t sv_rehlds_maxpacketentities;
+extern cvar_t sv_rehlds_maxrate;
+extern cvar_t sv_rehlds_minrate;
 
 // Extensions a connection agreed on, with the values of their parameters
 class CProtocolAgreement

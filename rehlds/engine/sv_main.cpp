@@ -3869,6 +3869,17 @@ void SV_ConnectionlessPacket(void)
 
 void SV_CheckRate(client_t *cl)
 {
+#ifdef REHLDS_FIXES
+	// sv_maxrate and sv_minrate are the bounds of clients without PROTOCOL_EXT_RATE
+	if (cl->pGameClient->HasProtocolExtension(PROTOCOL_EXT_RATE))
+	{
+		float maxRate = (sv_rehlds_maxrate.value > 0.0f) ? Q_min(sv_rehlds_maxrate.value, MAX_EXT_RATE) : MAX_EXT_RATE;
+		float minRate = Q_max(sv_rehlds_minrate.value, MIN_RATE);
+		cl->netchan.rate = Q_clamp(float(cl->netchan.rate), minRate, maxRate);
+		return;
+	}
+#endif
+
 	if (sv_maxrate.value > 0.0f)
 	{
 		if (cl->netchan.rate > sv_maxrate.value)
@@ -5491,7 +5502,12 @@ void SV_ExtractFromUserinfo(client_t *cl)
 	if (val[0] != '\0')
 	{
 		i = Q_atoi(val);
+#ifdef REHLDS_FIXES
+		float maxRate = cl->pGameClient->HasProtocolExtension(PROTOCOL_EXT_RATE) ? MAX_EXT_RATE : MAX_RATE;
+		cl->netchan.rate = Q_clamp(float(i), MIN_RATE, maxRate);
+#else
 		cl->netchan.rate = Q_clamp(float(i), MIN_RATE, MAX_RATE);
+#endif
 	}
 
 	val = Info_ValueForKey(userinfo, "topcolor");

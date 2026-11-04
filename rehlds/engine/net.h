@@ -108,6 +108,9 @@ enum
 const float MAX_RATE		= 100000.0f;
 const float MIN_RATE		= 1000.0f;
 
+// The rate limit of a client that agreed on PROTOCOL_EXT_RATE
+const float MAX_EXT_RATE	= 786432.0f;
+
 // Default data rate
 const float DEFAULT_RATE	= 30000.0f;
 
