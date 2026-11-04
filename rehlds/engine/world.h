@@ -102,6 +102,7 @@ int SV_HullPointContents(hull_t *hull, int num, const vec_t *p);
 int SV_LinkContents(areanode_t *node, const vec_t *pos);
 int SV_PointContents(const vec_t *p);
 edict_t *SV_TestEntityPosition(edict_t *ent);
+edict_t *SV_TestEntityPosition_internal(edict_t *ent);
 qboolean SV_RecursiveHullCheck(hull_t *hull, int num, float p1f, float p2f, const vec_t *p1, const vec_t *p2, trace_t *trace);
 void SV_SingleClipMoveToEntity(edict_t *ent, const vec_t *start, const vec_t *mins, const vec_t *maxs, const vec_t *end, trace_t *trace);
 trace_t SV_ClipMoveToEntity(edict_t *ent, const vec_t *start, const vec_t *mins, const vec_t *maxs, const vec_t *end);
