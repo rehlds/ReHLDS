@@ -1624,7 +1624,7 @@ void EXT_FUNC PF_SetKeyValue_I(char *infobuffer, const char *key, const char *va
 {
 	if (infobuffer == localinfo)
 	{
-		Info_SetValueForKey(infobuffer, key, value, MAX_INFO_STRING * 128);
+		Info_SetValueForKey(infobuffer, key, value, MAX_LOCALINFO);
 	}
 	else
 	{

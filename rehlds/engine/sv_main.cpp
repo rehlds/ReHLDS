@@ -568,7 +568,7 @@ void SV_Localinfo_f(void)
 		return;
 	}
 
-	Info_SetValueForKey(localinfo, Cmd_Argv(1), Cmd_Argv(2), MAX_INFO_STRING * 128);
+	Info_SetValueForKey(localinfo, Cmd_Argv(1), Cmd_Argv(2), MAX_LOCALINFO);
 }
 
 void SV_User_f(void)
