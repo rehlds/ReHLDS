@@ -228,6 +228,10 @@ public:
 	// Agreed with the client in its connect request, kept until it disconnects
 	virtual bool HasProtocolExtension(ProtocolExtension extension) = 0;
 
+	// The agreed value of the extension parameter (PROTOCOL_EXT_PACKETSIZE: bytes, PROTOCOL_EXT_PACKETENTITIES: entities),
+	// 0 when the extension has no parameter or is not agreed
+	virtual int GetProtocolExtensionParam(ProtocolExtension extension) = 0;
+
 	// this must be the last virtual function in class
 #ifdef REHLDS_SELF
 	virtual client_t* GetClient() = 0;

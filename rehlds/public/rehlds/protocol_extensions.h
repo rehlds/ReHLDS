@@ -39,9 +39,9 @@ enum ProtocolExtension
 	PROTOCOL_EXT_USERMESSAGE      = 1, // extended user messages in both directions
 	PROTOCOL_EXT_REPLICATEDCVARS  = 2, // FCVAR_REPLICATED cvar values sent to the client
 	PROTOCOL_EXT_RATE             = 3, // reserved
-	PROTOCOL_EXT_PACKETSIZE       = 4, // reserved
+	PROTOCOL_EXT_PACKETSIZE       = 4, // packets to the client above 4010 bytes, sent in parts of their own header, parameter "psize"
 	PROTOCOL_EXT_USERINFO         = 5, // reserved
-	PROTOCOL_EXT_PACKETENTITIES   = 6, // reserved
+	PROTOCOL_EXT_PACKETENTITIES   = 6, // more than 256 entities in a frame, parameter "pents"
 
 	PROTOCOL_EXT_COUNT
 };

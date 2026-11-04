@@ -31,6 +31,12 @@
 // 0 - off, 1 - allowed, 2 - required: a client without the extension is rejected
 cvar_t sv_rehlds_ext_usermessage = { "sv_rehlds_ext_usermessage", "1", 0, 1.0f, NULL };
 cvar_t sv_rehlds_ext_replicatedcvars = { "sv_rehlds_ext_replicatedcvars", "1", 0, 1.0f, NULL };
+cvar_t sv_rehlds_ext_packetsize = { "sv_rehlds_ext_packetsize", "1", 0, 1.0f, NULL };
+cvar_t sv_rehlds_ext_packetentities = { "sv_rehlds_ext_packetentities", "1", 0, 1.0f, NULL };
+
+// Server limits of the extension parameters; the engine clamps them to what it handles
+cvar_t sv_rehlds_maxpacketsize = { "sv_rehlds_maxpacketsize", "131072", 0, 131072.0f, NULL };
+cvar_t sv_rehlds_maxpacketentities = { "sv_rehlds_maxpacketentities", "512", 0, 512.0f, NULL };
 
 enum
 {
@@ -43,20 +49,27 @@ struct protocol_ext_desc_t
 {
 	ProtocolExtension extension;
 	const char *name;
-	cvar_t *setting; // sv_rehlds_ext_<name>; NULL when the extension has no switch and is always allowed
-	int dependency;  // extension that has to be agreed as well, -1 for none
+	cvar_t *setting;      // sv_rehlds_ext_<name>; NULL when the extension has no switch and is always allowed
+	int dependency;       // extension that has to be agreed as well, -1 for none
+	const char *paramKey; // key of the parameter in protinfo and in the reply, NULL when there is none
+	cvar_t *paramLimit;   // server limit of the parameter
+	int defaultLimit;     // the limit without the extension; an agreed value has to go past it
+	int maxValue;         // the most the engine handles
 };
 
 // Extensions this engine implements, every dependency before its dependents
 static const protocol_ext_desc_t g_ProtocolExtensions[] =
 {
-	{ PROTOCOL_EXT_NETMESSAGE,      "netmessage",      NULL,                           -1                      },
-	{ PROTOCOL_EXT_USERMESSAGE,     "usermessage",     &sv_rehlds_ext_usermessage,     -1                      },
-	{ PROTOCOL_EXT_REPLICATEDCVARS, "replicatedcvars", &sv_rehlds_ext_replicatedcvars, PROTOCOL_EXT_NETMESSAGE },
+	{ PROTOCOL_EXT_NETMESSAGE,      "netmessage",      NULL,                           -1,                      NULL,    NULL,                         0,                   0                       },
+	{ PROTOCOL_EXT_USERMESSAGE,     "usermessage",     &sv_rehlds_ext_usermessage,     -1,                      NULL,    NULL,                         0,                   0                       },
+	{ PROTOCOL_EXT_REPLICATEDCVARS, "replicatedcvars", &sv_rehlds_ext_replicatedcvars, PROTOCOL_EXT_NETMESSAGE, NULL,    NULL,                         0,                   0                       },
+	{ PROTOCOL_EXT_PACKETSIZE,      "packetsize",      &sv_rehlds_ext_packetsize,      -1,                      "psize", &sv_rehlds_maxpacketsize,     NET_MAX_PACKET,      NET_MAX_EXT_PACKET      },
+	{ PROTOCOL_EXT_PACKETENTITIES,  "packetentities",  &sv_rehlds_ext_packetentities,  PROTOCOL_EXT_PACKETSIZE, "pents", &sv_rehlds_maxpacketentities, MAX_PACKET_ENTITIES, MAX_EXT_PACKET_ENTITIES },
 };
 
 static_assert(PROTOCOL_EXT_MAX_BITS % 4 == 0, "a hex digit carries four extension numbers");
 static_assert(sizeof("\\pext\\") + PROTOCOL_EXT_MAX_BITS / 4 <= PROTOCOL_EXT_REPLY_SIZE - PROTOCOL_EXT_MODULE_KEYS_SIZE, "no room for pext in the reply");
+static_assert(1 + MAX_EXT_PACKET_ENTITIES + MAX_CLIENTS <= MAX_PHYSENTS, "the entities of a frame overflow the physent lists of the client");
 
 static int GetSetting(const protocol_ext_desc_t &desc)
 {
@@ -66,6 +79,41 @@ static int GetSetting(const protocol_ext_desc_t &desc)
 static bool IsValidExtension(ProtocolExtension extension)
 {
 	return extension >= 0 && extension < PROTOCOL_EXT_COUNT;
+}
+
+// The smaller of the client and the server limits, 0 when it does not go past the default limit
+static int AgreeParam(const protocol_ext_desc_t &desc, int requested)
+{
+	int value = Q_min(requested, (int)desc.paramLimit->value);
+	value = Q_min(value, desc.maxValue);
+
+	return (value > desc.defaultLimit) ? value : 0;
+}
+
+bool CProtocolAgreement::Has(ProtocolExtension extension) const
+{
+	return IsValidExtension(extension) && m_Bits.IsBitSet(extension);
+}
+
+int CProtocolAgreement::GetParam(ProtocolExtension extension) const
+{
+	return Has(extension) ? m_Params[extension] : 0;
+}
+
+void CProtocolAgreement::Set(ProtocolExtension extension, int param)
+{
+	if (!IsValidExtension(extension))
+		return;
+
+	m_Bits.Set(extension);
+	m_Params[extension] = param;
+}
+
+void CProtocolAgreement::Clear()
+{
+	m_Bits.ClearAll();
+	Q_memset(m_Params, 0, sizeof(m_Params));
+	m_MaxRoutable = 0;
 }
 
 // "<prefix>_<name>": the prefix keeps keys of different modules apart and
@@ -81,6 +129,8 @@ static bool IsModuleKey(const char *key)
 
 CProtocolNegotiation::CProtocolNegotiation()
 {
+	Q_memset(m_RequestedParams, 0, sizeof(m_RequestedParams));
+	m_RequestedMaxRoutable = 0;
 	m_bHasRequest = false;
 	m_ModuleKeys[0] = '\0';
 }
@@ -92,6 +142,16 @@ bool CProtocolNegotiation::ParseRequest(const char *protinfo)
 		return true;
 
 	m_bHasRequest = true;
+
+	for (const protocol_ext_desc_t &desc : g_ProtocolExtensions)
+	{
+		if (desc.paramKey)
+			m_RequestedParams[desc.extension] = Q_atoi(Info_ValueForKey(protinfo, desc.paramKey));
+	}
+
+	// Part size the client takes with packetsize, net_maxroutable of Source; optional
+	m_RequestedMaxRoutable = Q_atoi(Info_ValueForKey(protinfo, "proute"));
+
 	return ParseBits(hex, &m_Requested);
 }
 
@@ -136,17 +196,34 @@ bool EXT_FUNC CProtocolNegotiation::AddReplyValue(const char *key, const char *v
 
 void CProtocolNegotiation::Agree()
 {
-	m_Agreed.ClearAll();
+	m_Agreed.Clear();
 
 	for (const protocol_ext_desc_t &desc : g_ProtocolExtensions)
 	{
 		if (!m_Requested.IsBitSet(desc.extension) || !m_Allowed.IsBitSet(desc.extension))
 			continue;
 
-		if (desc.dependency != -1 && !m_Agreed.IsBitSet(desc.dependency))
+		if (desc.dependency != -1 && !m_Agreed.Has((ProtocolExtension)desc.dependency))
 			continue;
 
-		m_Agreed.Set(desc.extension);
+		int param = 0;
+		if (desc.paramKey)
+		{
+			param = AgreeParam(desc, m_RequestedParams[desc.extension]);
+			if (!param)
+				continue;
+		}
+
+		m_Agreed.Set(desc.extension, param);
+	}
+
+	if (m_Agreed.Has(PROTOCOL_EXT_PACKETSIZE))
+	{
+		int maxRoutable = (int)sv_rehlds_maxroutable.value;
+		if (m_RequestedMaxRoutable > 0)
+			maxRoutable = Q_min(m_RequestedMaxRoutable, maxRoutable);
+
+		m_Agreed.SetMaxRoutable(clamp(maxRoutable, MIN_USER_MAXROUTABLE_SIZE, MAX_USER_MAXROUTABLE_SIZE));
 	}
 }
 
@@ -154,7 +231,7 @@ const char *CProtocolNegotiation::FindMissingRequired() const
 {
 	for (const protocol_ext_desc_t &desc : g_ProtocolExtensions)
 	{
-		if (GetSetting(desc) >= PROTOCOL_EXT_SETTING_REQUIRED && !m_Agreed.IsBitSet(desc.extension))
+		if (GetSetting(desc) >= PROTOCOL_EXT_SETTING_REQUIRED && !m_Agreed.Has(desc.extension))
 			return desc.name;
 	}
 
@@ -164,9 +241,20 @@ const char *CProtocolNegotiation::FindMissingRequired() const
 void CProtocolNegotiation::BuildReply(char *reply, int size) const
 {
 	char hex[PROTOCOL_EXT_MAX_BITS / 4 + 1];
-	FormatBits(m_Agreed, hex, sizeof(hex));
+	FormatBits(m_Agreed.GetBits(), hex, sizeof(hex));
 
-	Q_snprintf(reply, size, "\\pext\\%s%s", hex, m_ModuleKeys);
+	char params[PROTOCOL_EXT_REPLY_SIZE - PROTOCOL_EXT_MODULE_KEYS_SIZE] = "";
+	for (const protocol_ext_desc_t &desc : g_ProtocolExtensions)
+	{
+		if (!desc.paramKey || !m_Agreed.Has(desc.extension))
+			continue;
+
+		char param[32];
+		Q_snprintf(param, sizeof(param), "\\%s\\%d", desc.paramKey, m_Agreed.GetParam(desc.extension));
+		Q_strlcat(params, param);
+	}
+
+	Q_snprintf(reply, size, "\\pext\\%s%s%s", hex, params, m_ModuleKeys);
 }
 
 // Hex digit k, counting from the left, carries extensions 4k..4k+3; 4k is its lowest bit.
@@ -239,5 +327,17 @@ void Rehlds_ProtocolExt_Init()
 #ifdef REHLDS_FIXES
 	Cvar_RegisterVariable(&sv_rehlds_ext_usermessage);
 	Cvar_RegisterVariable(&sv_rehlds_ext_replicatedcvars);
+	Cvar_RegisterVariable(&sv_rehlds_ext_packetsize);
+	Cvar_RegisterVariable(&sv_rehlds_ext_packetentities);
+	Cvar_RegisterVariable(&sv_rehlds_maxpacketsize);
+	Cvar_RegisterVariable(&sv_rehlds_maxpacketentities);
+	Cvar_RegisterVariable(&sv_rehlds_splitrate);
+	Cvar_RegisterVariable(&sv_rehlds_maxroutable);
 #endif
+}
+
+// The thread of queued parts stops before the engine library goes away
+void Rehlds_ProtocolExt_Shutdown()
+{
+	g_QueuedPacketSender.Shutdown();
 }

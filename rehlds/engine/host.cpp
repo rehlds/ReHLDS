@@ -1254,6 +1254,8 @@ void Host_Shutdown(void)
 	//Rehlds Security
 	Rehlds_Security_Shutdown();
 
+	Rehlds_ProtocolExt_Shutdown();
+
 	Cmd_RemoveGameCmds();
 	Cmd_Shutdown();
 	Cvar_Shutdown();

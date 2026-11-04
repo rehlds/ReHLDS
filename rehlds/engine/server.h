@@ -447,6 +447,7 @@ qboolean SV_IsPlayerIndex(int index);
 qboolean SV_IsPlayerIndex_wrapped(int index);
 void SV_ClearPacketEntities(client_frame_t *frame);
 void SV_AllocPacketEntities(client_frame_t *frame, int numents);
+void SV_GrowFrameEntities(client_t *client, int capacity);
 void SV_ClearFrames(client_frame_t ** frames);
 void SV_ClearClient(client_t *cl);
 void SV_Serverinfo_f(void);

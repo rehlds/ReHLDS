@@ -146,6 +146,12 @@ const int NET_MAX_PAYLOAD	= 65536;
 // This is currently used value in the engine. TODO: define above gives 4016, check it why.
 const int NET_MAX_MESSAGE = 4037;
 
+// The largest packet sent to a client that has not agreed on PROTOCOL_EXT_PACKETSIZE
+#ifdef REHLDS_FIXES
+const int NET_MAX_PACKET = MAX_UDP_PACKET;
+#else
+const int NET_MAX_PACKET = NET_MAX_MESSAGE;
+#endif
 
 typedef enum svc_commands_e
 {

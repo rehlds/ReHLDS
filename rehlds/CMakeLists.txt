@@ -187,6 +187,7 @@ set(ENGINE_SRCS
 	rehlds/rehlds_security.cpp
 	rehlds/protocol/negotiation.cpp
 	rehlds/protocol/replicated_cvars.cpp
+	rehlds/protocol/split_packets.cpp
 	rehlds/protocol/user_messages.cpp
 )
 
@@ -282,7 +283,10 @@ target_sources(engine PRIVATE
 	${UNITTESTS_SRCS}>
 )
 
+find_package(Threads REQUIRED)
+
 target_link_libraries(engine PRIVATE
+	Threads::Threads
 	dl
 	rt
 	m

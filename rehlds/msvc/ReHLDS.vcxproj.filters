@@ -326,6 +326,9 @@
     <ClCompile Include="..\rehlds\protocol\replicated_cvars.cpp">
       <Filter>rehlds\protocol</Filter>
     </ClCompile>
+    <ClCompile Include="..\rehlds\protocol\split_packets.cpp">
+      <Filter>rehlds\protocol</Filter>
+    </ClCompile>
     <ClCompile Include="..\rehlds\protocol\user_messages.cpp">
       <Filter>rehlds\protocol</Filter>
     </ClCompile>
@@ -869,6 +872,9 @@
       <Filter>rehlds\protocol</Filter>
     </ClInclude>
     <ClInclude Include="..\rehlds\protocol\replicated_cvars.h">
+      <Filter>rehlds\protocol</Filter>
+    </ClInclude>
+    <ClInclude Include="..\rehlds\protocol\split_packets.h">
       <Filter>rehlds\protocol</Filter>
     </ClInclude>
     <ClInclude Include="..\rehlds\protocol\user_messages.h">

@@ -266,13 +266,45 @@ void Netchan_UpdateFlow(netchan_t *chan)
 	}
 }
 
+// The largest packet the remote side reassembles
+static int Netchan_GetMaxPacketSize(const netchan_t *chan)
+{
+	if (chan->player_slot)
+		return g_psvs.clients[chan->player_slot - 1].pGameClient->GetMaxPacketSize();
+
+	return NET_MAX_PACKET;
+}
+
+// Bytes per second the channel may send
+static double Netchan_GetRate(const netchan_t *chan)
+{
+	if (g_psv.active && sv_lan.value != 0.0f && sv_lan_rate.value > MIN_RATE)
+		return sv_lan_rate.value;
+
+	return chan->rate;
+}
+
+// The client agreed on its own format of parts for packets over the part size it takes
+static CSplitPacketSender *Netchan_GetSplitPacketSender(const netchan_t *chan, int length)
+{
+	if (!chan->player_slot || chan->remote_address.type != NA_IP)
+		return NULL;
+
+	CGameClient *gameClient = g_psvs.clients[chan->player_slot - 1].pGameClient;
+	if (!gameClient->HasProtocolExtension(PROTOCOL_EXT_PACKETSIZE))
+		return NULL;
+
+	CSplitPacketSender &sender = gameClient->GetSplitPacketSender();
+	if (length <= sender.GetMaxRoutable())
+		return NULL;
+
+	return &sender;
+}
+
 void Netchan_Transmit(netchan_t *chan, int length, byte *data)
 {
-#ifdef REHLDS_FIXES
-	byte send_buf[MAX_UDP_PACKET];
-#else
-	byte send_buf[NET_MAX_MESSAGE];
-#endif
+	// An extended packet is too large for the stack
+	static byte send_buf[NET_MAX_EXT_PACKET];
 	qboolean send_reliable;
 	qboolean send_reliable_fragment;
 	qboolean send_resending = false;
@@ -284,7 +316,7 @@ void Netchan_Transmit(netchan_t *chan, int length, byte *data)
 	sizebuf_t sb_send;
 	sb_send.data = send_buf;
 	sb_send.buffername = "Netchan_Transmit";
-	sb_send.maxsize = sizeof(send_buf);
+	sb_send.maxsize = Netchan_GetMaxPacketSize(chan);
 	sb_send.flags = 0;
 	sb_send.cursize = 0;
 
@@ -537,6 +569,9 @@ void Netchan_Transmit(netchan_t *chan, int length, byte *data)
 	chan->flow[FLOW_OUTGOING].current++;
 	Netchan_UpdateFlow(chan);
 
+	// A packet in parts sends a header and a UDP header with every part
+	int sentSize = sb_send.cursize + UDP_HEADER_SIZE;
+
 	if (!g_pcls.demoplayback)
 	{
 		COM_Munge2(sb_send.data + 8, sb_send.cursize - 8, (unsigned char)(chan->outgoing_sequence - 1));
@@ -544,19 +579,20 @@ void Netchan_Transmit(netchan_t *chan, int length, byte *data)
 		if (g_modfuncs.m_pfnProcessOutgoingNet)
 			g_modfuncs.m_pfnProcessOutgoingNet(chan, &sb_send);
 
-		NET_SendPacket(chan->sock, sb_send.cursize, sb_send.data, chan->remote_address);
+		CSplitPacketSender *splitPacketSender = Netchan_GetSplitPacketSender(chan, sb_send.cursize);
+		if (splitPacketSender)
+			sentSize = splitPacketSender->Send(chan->sock, chan->remote_address, sb_send.data, sb_send.cursize, Netchan_GetRate(chan));
+		else
+			NET_SendPacket(chan->sock, sb_send.cursize, sb_send.data, chan->remote_address);
 	}
 
-	if (g_psv.active && sv_lan.value != 0.0f && sv_lan_rate.value > MIN_RATE)
-		fRate = 1.0 / sv_lan_rate.value;
-	else
-		fRate = 1.0 / chan->rate;
+	fRate = 1.0 / Netchan_GetRate(chan);
 
 	if (chan->cleartime < realtime) {
 		chan->cleartime = realtime;
 	}
 
-	chan->cleartime += (sb_send.cursize + UDP_HEADER_SIZE) * fRate;
+	chan->cleartime += sentSize * fRate;
 
 	if (net_showpackets.value != 0.0f && net_showpackets.value != 2.0f) {
 		char c = (chan == &g_pcls.netchan) ? 'c' : 's';

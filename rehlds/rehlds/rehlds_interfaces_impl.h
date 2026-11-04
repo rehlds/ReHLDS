@@ -30,6 +30,7 @@
 #include "rehlds_interfaces.h"
 #include "server.h"
 #include "protocol/negotiation.h"
+#include "protocol/split_packets.h"
 
 const int NET_DECOMPRESS_MAX_TIMES = 10;
 
@@ -96,7 +97,14 @@ private:
 #endif
 
 	// Agreed in SV_ConnectClient_internal, cleared when the client is dropped
-	CProtocolExtensionBits m_ProtocolExtensions;
+	CProtocolAgreement m_ProtocolAgreement;
+
+	// Entity storage of every allocated frame of the client; grows past MAX_PACKET_ENTITIES
+	// only for a client with PROTOCOL_EXT_PACKETENTITIES that sees more entities
+	int m_FrameEntityCapacity;
+
+	// Packets over the part size of a client with PROTOCOL_EXT_PACKETSIZE
+	CSplitPacketSender m_SplitPacketSender;
 public:
 	CGameClient(int id, client_t* cl);
 
@@ -270,6 +278,7 @@ public:
 	virtual void SetSentNewResponse(bool state);
 
 	virtual bool HasProtocolExtension(ProtocolExtension extension);
+	virtual int GetProtocolExtensionParam(ProtocolExtension extension);
 
 public:
 	bool GetSpawnedOnce() const { return m_bSpawnedOnce; }
@@ -278,7 +287,7 @@ public:
 	uint8_t* GetExtendedMessageBuffer() { return m_NetChan.GetExtendedMessageBuffer(); };
 #endif
 
-	void NetchanClear() { m_NetChan.Clear(); }
+	void NetchanClear() { m_NetChan.Clear(); m_SplitPacketSender.Clear(); }
 	FragStats_t &GetFragStats(int stream) { return m_NetChan.GetFragStats(stream); };
 
 	const movevars_t &GetMoveVars() const { return m_MoveVars; }
@@ -287,8 +296,21 @@ public:
 	// The game DLL changes them in PM_Move through playermove_t
 	movevars_t *GetMoveVarsForPlayerMove() { return &m_MoveVars; }
 
-	void SetProtocolExtensions(const CProtocolExtensionBits &extensions) { m_ProtocolExtensions = extensions; }
-	void ClearProtocolExtensions() { m_ProtocolExtensions.ClearAll(); }
+	void SetProtocolExtensions(const CProtocolAgreement &agreement) { m_ProtocolAgreement = agreement; m_SplitPacketSender.SetMaxRoutable(agreement.GetMaxRoutable()); }
+	void ClearProtocolExtensions() { m_ProtocolAgreement.Clear(); }
+
+	// The largest packet the client reassembles
+	int GetMaxPacketSize() const;
+
+	// Unreliable part of a packet: the same room is left for the netchan header as in a packet of NET_MAX_PACKET bytes
+	int GetMaxDatagramSize() const { return GetMaxPacketSize() - (NET_MAX_PACKET - MAX_DATAGRAM); }
+
+	int GetMaxPacketEntities() const;
+
+	int GetFrameEntityCapacity() const { return m_FrameEntityCapacity; }
+	void SetFrameEntityCapacity(int capacity) { m_FrameEntityCapacity = capacity; }
+
+	CSplitPacketSender &GetSplitPacketSender() { return m_SplitPacketSender; }
 
 #ifdef REHLDS_FIXES
 	void SetupLocalGameTime() { m_localGameTimeBase = g_psv.time; }

@@ -143,6 +143,7 @@
     <ClCompile Include="..\rehlds\rehlds_security.cpp" />
     <ClCompile Include="..\rehlds\protocol\negotiation.cpp" />
     <ClCompile Include="..\rehlds\protocol\replicated_cvars.cpp" />
+    <ClCompile Include="..\rehlds\protocol\split_packets.cpp" />
     <ClCompile Include="..\rehlds\protocol\user_messages.cpp" />
     <ClCompile Include="..\rehlds\structSizeCheck.cpp" />
     <ClCompile Include="..\testsuite\anonymizer.cpp" />
@@ -475,6 +476,7 @@
     <ClInclude Include="..\rehlds\rehlds_security.h" />
     <ClInclude Include="..\rehlds\protocol\negotiation.h" />
     <ClInclude Include="..\rehlds\protocol\replicated_cvars.h" />
+    <ClInclude Include="..\rehlds\protocol\split_packets.h" />
     <ClInclude Include="..\rehlds\protocol\user_messages.h" />
     <ClInclude Include="..\testsuite\anonymizer.h" />
     <ClInclude Include="..\testsuite\funccalls.h" />

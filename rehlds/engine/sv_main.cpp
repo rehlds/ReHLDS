@@ -471,9 +471,9 @@ void SV_AllocPacketEntities(client_frame_t *frame, int numents)
 #ifdef REHLDS_OPT_PEDANTIC
 		frame->entities.num_entities = numents;
 
-		// only alloc for max possible numents
+		// only alloc for max possible numents: the entity capacity of the client's frames
 		if (!frame->entities.entities)
-			frame->entities.entities = (entity_state_t *)Mem_ZeroMalloc(sizeof(entity_state_t) * MAX_PACKET_ENTITIES);
+			frame->entities.entities = (entity_state_t *)Mem_ZeroMalloc(sizeof(entity_state_t) * numents);
 #else // REHLDS_OPT_PEDANTIC
 		if (frame->entities.entities)
 			SV_ClearPacketEntities(frame);
@@ -486,6 +486,19 @@ void SV_AllocPacketEntities(client_frame_t *frame, int numents)
 		frame->entities.entities = (entity_state_t *)Mem_ZeroMalloc(sizeof(entity_state_t) * allocatedslots);
 #endif // REHLDS_OPT_PEDANTIC
 	}
+}
+
+// Gives every allocated frame of the client room for capacity entities, keeping what the frames hold
+void SV_GrowFrameEntities(client_t *client, int capacity)
+{
+	for (int i = 0; i < SV_UPDATE_BACKUP; i++)
+	{
+		packet_entities_t *pack = &client->frames[i].entities;
+		if (pack->entities)
+			pack->entities = (entity_state_t *)Mem_Realloc(pack->entities, sizeof(entity_state_t) * capacity);
+	}
+
+	client->pGameClient->SetFrameEntityCapacity(capacity);
 }
 
 void SV_ClearFrames(client_frame_t **frames)
@@ -2565,6 +2578,7 @@ void EXT_FUNC SV_ConnectClient_internal(void)
 	SV_ClearFrames(&host_client->frames);
 
 	host_client->frames = (client_frame_t *)Mem_ZeroMalloc(sizeof(client_frame_t) * SV_UPDATE_BACKUP);
+	host_client->pGameClient->SetFrameEntityCapacity(MAX_PACKET_ENTITIES);
 	host_client->resourcesneeded.pPrev = &host_client->resourcesneeded;
 	host_client->resourcesneeded.pNext = &host_client->resourcesneeded;
 	host_client->resourcesonhand.pPrev = &host_client->resourcesonhand;
@@ -4696,7 +4710,7 @@ int SV_CreatePacketEntities_internal(sv_delta_t type, client_t *client, packet_e
 	// fix for https://github.com/dreamstalker/rehlds/issues/24
 #ifdef REHLDS_FIXES
 	int baselineToIdx = -1; //index of the baseline in to->entities[]
-	uint64 toBaselinesForceMask[MAX_PACKET_ENTITIES];
+	uint64 toBaselinesForceMask[MAX_EDICTS];
 #endif
 
 	// See if this is a full update
@@ -5002,13 +5016,16 @@ void SV_WriteEntitiesToClient(client_t *client, sizebuf_t *msg)
 
 	packet_entities_t *pack = &frame->entities;
 
-	// for REHLDS_OPT_PEDANTIC: Allocate the MAX_PACKET_ENTITIES ents in the frame's storage
+	// for REHLDS_OPT_PEDANTIC: Allocate the client's frame capacity in the frame's storage
 	// This allows us to avoid intermediate 'fullpack' storage
 #ifdef REHLDS_OPT_PEDANTIC
-	SV_AllocPacketEntities(frame, MAX_PACKET_ENTITIES);
+	CGameClient *gameClient = client->pGameClient;
+	const int maxEntities = gameClient->GetMaxPacketEntities();
+	SV_AllocPacketEntities(frame, gameClient->GetFrameEntityCapacity());
 	packet_entities_t *curPack = &frame->entities;
 	curPack->num_entities = 0;
 #else
+	const int maxEntities = MAX_PACKET_ENTITIES;
 	SV_ClearPacketEntities(frame);
 	full_packet_entities_t fullpack;
 	fullpack.num_entities = 0;
@@ -5032,11 +5049,16 @@ void SV_WriteEntitiesToClient(client_t *client, sizebuf_t *msg)
 
 	for (; e < g_psv.num_edicts; e++)
 	{
-		if (curPack->num_entities >= MAX_PACKET_ENTITIES)
+		if (curPack->num_entities >= maxEntities)
 		{
 			Con_DPrintf("Too many entities in visible packet list.\n");
 			break;
 		}
+
+#ifdef REHLDS_OPT_PEDANTIC
+		if (curPack->num_entities >= gameClient->GetFrameEntityCapacity())
+			SV_GrowFrameEntities(client, Q_min(gameClient->GetFrameEntityCapacity() * 2, maxEntities));
+#endif
 
 		edict_t* ent = &g_psv.edicts[e];
 
@@ -5135,12 +5157,13 @@ void SV_CleanupEnts(void)
 
 qboolean SV_SendClientDatagram(client_t *client)
 {
-	unsigned char buf[MAX_DATAGRAM];
+	// An extended packet is too large for the stack
+	static unsigned char buf[NET_MAX_EXT_PACKET];
 	sizebuf_t msg;
 
 	msg.buffername = "Client Datagram";
 	msg.data = buf;
-	msg.maxsize = sizeof(buf);
+	msg.maxsize = client->pGameClient->GetMaxDatagramSize();
 	msg.cursize = 0;
 	msg.flags = SIZEBUF_ALLOW_OVERFLOW;
 

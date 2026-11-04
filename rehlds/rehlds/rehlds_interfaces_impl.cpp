@@ -40,6 +40,7 @@ CGameClient::CGameClient(int id, client_t* cl)
 	m_Id = id;
 	m_pClient = cl;
 	m_bSpawnedOnce = false;
+	m_FrameEntityCapacity = MAX_PACKET_ENTITIES;
 	SetMoveVars({});
 
 	cl->pGameClient = this;
@@ -516,10 +517,28 @@ void EXT_FUNC CGameClient::SetSentNewResponse(bool state)
 
 bool EXT_FUNC CGameClient::HasProtocolExtension(ProtocolExtension extension)
 {
-	if (extension < 0 || extension >= PROTOCOL_EXT_COUNT)
-		return false;
+	return m_ProtocolAgreement.Has(extension);
+}
 
-	return m_ProtocolExtensions.IsBitSet(extension);
+int EXT_FUNC CGameClient::GetProtocolExtensionParam(ProtocolExtension extension)
+{
+	return m_ProtocolAgreement.GetParam(extension);
+}
+
+int CGameClient::GetMaxPacketSize() const
+{
+	if (m_ProtocolAgreement.Has(PROTOCOL_EXT_PACKETSIZE))
+		return m_ProtocolAgreement.GetParam(PROTOCOL_EXT_PACKETSIZE);
+
+	return NET_MAX_PACKET;
+}
+
+int CGameClient::GetMaxPacketEntities() const
+{
+	if (m_ProtocolAgreement.Has(PROTOCOL_EXT_PACKETENTITIES))
+		return m_ProtocolAgreement.GetParam(PROTOCOL_EXT_PACKETENTITIES);
+
+	return MAX_PACKET_ENTITIES;
 }
 
 CNetChan::CNetChan(netchan_t* chan)
