@@ -39,7 +39,7 @@
 #include "rehlds_studio.h"
 
 #define REHLDS_API_VERSION_MAJOR 3
-#define REHLDS_API_VERSION_MINOR 16
+#define REHLDS_API_VERSION_MINOR 17
 
 //Steam_NotifyClientConnect hook
 typedef IHookChain<qboolean, IGameClient*, const void*, unsigned int> IRehldsHook_Steam_NotifyClientConnect;
@@ -444,6 +444,14 @@ struct RehldsFuncs_t {
 
 	// Pause
 	void(*SetServerPause)(bool status);
+
+	// Info buffers
+	// Sets the value of a key in an info buffer of the engine, by the limits and rules of the engine.
+	// Returns whether the key was set.
+	bool(*Info_SetBufferValue)(char *infobuffer, const char *key, const char *value);
+
+	// The size of an info buffer of the engine
+	size_t(*Info_GetBufferSize)(const char *infobuffer);
 };
 
 class IRehldsApi {

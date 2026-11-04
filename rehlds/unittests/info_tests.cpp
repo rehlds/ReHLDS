@@ -355,3 +355,28 @@ TEST(Info_IsKeyImportant, Info, 1000)
 		CHECK("wrong result", d->result == result);
 	}
 }
+
+size_t Info_GetBufferSize_api(const char *infobuffer);
+bool Info_SetBufferValue_api(char *infobuffer, const char *key, const char *value);
+
+TEST(InfoBufferSize, Info, 1000)
+{
+	char userinfo[MAX_CLIENT_INFO_STRING] = "";
+
+	LONGS_EQUAL("localinfo", MAX_LOCALINFO, Info_GetBufferSize_api(localinfo));
+	LONGS_EQUAL("serverinfo", MAX_INFO_STRING, Info_GetBufferSize_api(Info_Serverinfo()));
+	LONGS_EQUAL("userinfo", MAX_CLIENT_INFO_STRING, Info_GetBufferSize_api(userinfo));
+}
+
+TEST(InfoBufferSetValue, Info, 1000)
+{
+	char userinfo[MAX_CLIENT_INFO_STRING] = "\\name\\player";
+
+	CHECK("key set", Info_SetBufferValue_api(userinfo, "model", "urban"));
+	CHECK("star key set", Info_SetBufferValue_api(userinfo, "*sid", "12345"));
+	ZSTR_EQUAL("keys in the buffer", "\\name\\player\\model\\urban\\*sid\\12345", userinfo);
+
+	CHECK("key with a slash refused", !Info_SetBufferValue_api(userinfo, "bad\\key", "1"));
+	CHECK("key removed by an empty value", Info_SetBufferValue_api(userinfo, "model", ""));
+	ZSTR_EQUAL("key removed", "\\name\\player\\*sid\\12345", userinfo);
+}

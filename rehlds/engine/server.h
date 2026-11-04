@@ -180,6 +180,9 @@ typedef struct client_frame_s
 
 class CGameClient;
 
+// The room of the userinfo of a player
+const int MAX_CLIENT_INFO_STRING = MAX_INFO_STRING;
+
 typedef struct client_s
 {
 	qboolean active;

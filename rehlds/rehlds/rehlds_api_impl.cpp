@@ -488,6 +488,30 @@ void EXT_FUNC SetServerPause(bool setPause)
 #endif // REHLDS_FIXES
 }
 
+// An info buffer that is neither localinfo nor serverinfo is the userinfo of a player
+size_t EXT_FUNC Info_GetBufferSize_api(const char *infobuffer)
+{
+	if (infobuffer == localinfo)
+		return MAX_LOCALINFO;
+
+	if (infobuffer == Info_Serverinfo())
+		return MAX_INFO_STRING;
+
+	return MAX_CLIENT_INFO_STRING;
+}
+
+bool EXT_FUNC Info_SetBufferValue_api(char *infobuffer, const char *key, const char *value)
+{
+	const size_t maxsize = Info_GetBufferSize_api(infobuffer);
+
+#ifdef REHLDS_FIXES
+	return Info_SetValueForStarKey(infobuffer, key, value, maxsize) != FALSE;
+#else
+	Info_SetValueForStarKey(infobuffer, key, value, (int)maxsize);
+	return !Q_strcmp(Info_ValueForKey(infobuffer, key), value);
+#endif
+}
+
 void SV_SendUserReg_api(sizebuf_t *msg)
 {
 	SV_SendUserReg(msg, sv_gpNewUserMsgs);
@@ -598,6 +622,8 @@ RehldsFuncs_t g_RehldsApiFuncs =
 	&GetHostFrameTime_api,
 	&GetFirstCmdFunctionHandle_api,
 	&SetServerPause,
+	&Info_SetBufferValue_api,
+	&Info_GetBufferSize_api,
 };
 
 bool EXT_FUNC SV_EmitSound2_internal(edict_t *entity, IGameClient *pReceiver, int channel, const char *sample, float volume, float attenuation, int flags, int pitch, int emitFlags, const float *pOrigin)
