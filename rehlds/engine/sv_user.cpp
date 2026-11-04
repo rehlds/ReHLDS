@@ -582,8 +582,14 @@ void SV_AddLinksToPM_(areanode_t *node, float *pmove_mins, float *pmove_maxs)
 			continue;
 
 		int e = NUM_FOR_EDICT(check);
-		physent_t *ve = &pmove->visents[pmove->numvisent++];
-		SV_CopyEdictToPhysent(ve, e, check);
+
+		// A full visible list does not keep the edict out of the collision lists
+		physent_t *ve = nullptr;
+		if (pmove->numvisent < MAX_PHYSENTS)
+		{
+			ve = &pmove->visents[pmove->numvisent++];
+			SV_CopyEdictToPhysent(ve, e, check);
+		}
 
 		if (!SV_IsCollidableInPM(check, e, pmove_mins, pmove_maxs))
 			continue;
@@ -608,7 +614,10 @@ void SV_AddLinksToPM_(areanode_t *node, float *pmove_mins, float *pmove_maxs)
 			pe = &pmove->moveents[pmove->nummoveent++];
 		}
 
-		Q_memcpy(pe, ve, sizeof(physent_t));
+		if (ve)
+			Q_memcpy(pe, ve, sizeof(physent_t));
+		else
+			SV_CopyEdictToPhysent(pe, e, check);
 	}
 
 	if (node->axis != -1)
