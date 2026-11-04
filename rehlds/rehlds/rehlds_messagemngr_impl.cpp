@@ -270,12 +270,11 @@ private:
 
 	struct Storage_t
 	{
-		// The message body, as large as the buffer MessageBegin/End writes it into: a message
-		// of the engine sent by the game DLL is not bound by the size limit of user messages
-		uint8 bufData[MAX_MSG_DATA]{};
+		// The message body: MAX_MSG_DATA fits inline, extended user messages grow it
+		MessageBuffer<uint8, MAX_MSG_DATA> data;
 
 		// The buffer for the message
-		sizebuf_t buf = { "MsgMngr/Begin/End", SIZEBUF_ALLOW_OVERFLOW, bufData, sizeof(bufData), 0 };
+		sizebuf_t buf = { "MsgMngr/Begin/End", SIZEBUF_ALLOW_OVERFLOW, data.base(), (int)data.capacity(), 0 };
 
 		// The destination of the message
 		Dest dest{};
@@ -288,6 +287,14 @@ private:
 
 		// The edict associated with the message
 		edict_t *edict{nullptr};
+
+		// Makes room for a body of the given size, keeping what is written
+		void reserve(size_t size)
+		{
+			data.reserve(size, buf.cursize);
+			buf.data = data.base();
+			buf.maxsize = (int)data.capacity();
+		}
 	};
 
 	Storage_t m_Storage[MAX_STORAGE];
@@ -306,6 +313,9 @@ private:
 	static const size_t MAX_PARAMS = 32;           // Parameters held without an allocation
 	MessageBuffer<Param_t, MAX_PARAMS> m_params;   // The array of parameters in the message
 	size_t m_paramCount;                           // The number of parameters in the message
+
+	// The size the body may grow to when a hook changes a string: the limit of the buffer it came from
+	int m_maxSize;
 
 	void resetParam(size_t index);
 
@@ -337,6 +347,7 @@ inline bool MessageImpl::isDataTypeModified(DataType type) const
 MessageImpl::MessageImpl()
 {
 	m_paramCount = 0;
+	m_maxSize = 0;
 	m_modifiedDataBits = 0;
 }
 
@@ -366,10 +377,13 @@ void MessageImpl::setActive(int dest, int id, const float *origin, edict_t *edic
 // Sets the buffer for the message
 void MessageImpl::setBuffer(sizebuf_t *pbuf)
 {
+	m_maxSize = pbuf->maxsize;
+
 	// Copy data from the provided buffer to the message buffer
 	for (int i = 0; i < MAX_STORAGE; i++)
 	{
 		Storage_t &storage = m_Storage[i];
+		storage.reserve(pbuf->cursize);
 		Q_memcpy(storage.buf.data, pbuf->data, pbuf->cursize);
 		storage.buf.cursize = pbuf->cursize;
 	}
@@ -486,15 +500,18 @@ void MessageImpl::setTxformBuffer(size_t index, size_t startPos, size_t oldLengt
 	int32_t diffLength = newLength - oldLength;
 	if (diffLength != 0)
 	{
-		sizebuf_t &buf = m_Storage[BACK].buf;
+		Storage_t &storage = m_Storage[BACK];
+		sizebuf_t &buf = storage.buf;
 
 		// Check if the buffer size limit will be exceeded
-		if (buf.cursize + diffLength > buf.maxsize)
+		if (buf.cursize + diffLength > m_maxSize)
 		{
 			Sys_Error(
 				"%s: Refusing to transform string with %i param of user message of %i bytes, "
-				"user message size limit is %i bytes\n", __func__, index, buf.cursize + diffLength, buf.maxsize);
+				"user message size limit is %i bytes\n", __func__, index, buf.cursize + diffLength, m_maxSize);
 		}
+
+		storage.reserve(buf.cursize + diffLength);
 
 		// Move the data in the buffer
 		size_t moveLength = buf.cursize - (startPos + oldLength);
@@ -786,9 +803,9 @@ void MessageImpl::resetParam(size_t index)
 		setValue<int16>(pbackbuf, getValueInt<int16>(pfrontbuf));
 		break;
 	case IMessage::ParamType::String:
-		// Return the original string value from the front buffer
+		// Return the original string value from the front buffer; the back buffer may move while it grows
 		setTxformBuffer(index, param.posBack, param.newlen, param.oldlen);
-		Q_memcpy(pbackbuf, pfrontbuf, param.oldlen);
+		Q_memcpy(m_Storage[BACK].buf.data + param.posBack, pfrontbuf, param.oldlen);
 		param.newlen = param.oldlen;
 		break;
 	default:
@@ -824,6 +841,7 @@ bool MessageImpl::resetModifiedData(DataType type, size_t index)
 		}
 
 		// Copy front storage data to back buffer data
+		storageBack.reserve(storageFront.buf.cursize);
 		Q_memcpy(storageBack.buf.data, storageFront.buf.data, storageFront.buf.cursize);
 		storageBack.buf.cursize = storageFront.buf.cursize;
 
@@ -943,9 +961,8 @@ bool MessageManagerImpl::MessageBegin(int msg_dest, int msg_id, const float *pOr
 		return false;
 	}
 
-	// Check if there are hooks registered for the message type.
-	// Extended user messages don't fit the message storage, so hooks never see them.
-	m_inhook = (m_hooks[msg_id] && m_hooks[msg_id]->getCount() > 0) && !SV_IsExtendedUserMsg(msg_id);
+	// Check if there are hooks registered for the message type
+	m_inhook = (m_hooks[msg_id] && m_hooks[msg_id]->getCount() > 0);
 
 	if (m_inhook)
 	{

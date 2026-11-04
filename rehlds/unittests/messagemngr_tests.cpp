@@ -104,6 +104,27 @@ TEST(HookSeesMessageOfFullBuffer, MessageManager, 1000)
 	LONGS_EQUAL("bytes after the string moved with it", 399 & 0x7F, g_Hooked.lastInt);
 }
 
+TEST(HookSeesExtendedMessage, MessageManager, 1000)
+{
+	const int msgId = SV_RegUserMsgEx("MsgMngrTest", -1, USERMSG_EXTENDED);
+	CHECK("extended message registered", msgId != 0);
+
+	ResetHooked();
+	MessageManager().registerHook(msgId, HookGrowString);
+
+	PF_MessageBegin_Intercept(MSG_BROADCAST, msgId, NULL, NULL);
+	PF_WriteString_Intercept("short");
+	for (int i = 0; i < 3000; i++)
+		PF_WriteByte_Intercept(i & 0x7F);
+	PF_MessageEnd_Intercept();
+
+	MessageManager().unregisterHook(msgId, HookGrowString);
+
+	LONGS_EQUAL("every param seen", 3001, g_Hooked.paramCount);
+	ZSTR_EQUAL("string changed", "a string longer than the one written", g_Hooked.strings[0]);
+	LONGS_EQUAL("bytes after the string moved with it", 2999 & 0x7F, g_Hooked.lastInt);
+}
+
 static void SendEveryType(int msgId)
 {
 	PF_MessageBegin_Intercept(MSG_BROADCAST, msgId, NULL, NULL);
