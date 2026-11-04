@@ -231,7 +231,7 @@ TEST(NegotiationAgreement, ProtocolExt, 1000)
 		Negotiate(&negotiation, "\\prot\\3\\pext\\ff");
 		CHECK("request seen", negotiation.HasRequest());
 		AgreedHex(negotiation, hex);
-		ZSTR_EQUAL("only implemented extensions", "f", hex);
+		ZSTR_EQUAL("only implemented extensions", "f2", hex);
 		CHECK("nothing required", !negotiation.FindMissingRequired());
 	}
 

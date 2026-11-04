@@ -1125,11 +1125,31 @@ void Info_SetFieldsToTransmit()
 	}
 }
 
+// Removes whole keys until the string is shorter than maxsize: the largest of the lowest priority first
+void Info_ShrinkToLength(char *s, size_t maxsize)
+{
+	for (int priority = INFO_KEY_PRIORITY_UNKNOWN; priority <= INFO_KEY_PRIORITY_HIGH; priority++)
+	{
+		while (Q_strlen(s) >= maxsize)
+		{
+			const char *largekey = Info_FindLargestKeyOfPriority(s, (InfoKeyPriority)priority);
+			if (largekey[0] == '\0')
+				break;
+
+			Info_RemoveKey(s, largekey);
+		}
+	}
+}
+
 void Info_CollectFields(char *destInfo, const char *srcInfo, size_t maxsize)
 {
 	if (g_info_transmitted_fields.empty()) {
-		Q_strlcpy(destInfo, srcInfo, maxsize);
-		Info_RemovePrefixedKeys(destInfo, '_');
+		// a receiver that cuts a value short reads a wrong one, so the room goes by whole keys
+		char info[MAX_EXT_INFO_STRING];
+		Q_strlcpy(info, srcInfo, sizeof(info));
+		Info_RemovePrefixedKeys(info, '_');
+		Info_ShrinkToLength(info, maxsize);
+		Q_strlcpy(destInfo, info, maxsize);
 		return;
 	}
 

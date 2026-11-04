@@ -44,6 +44,7 @@ CGameClient::CGameClient(int id, client_t* cl)
 	SetMoveVars({});
 
 	cl->pGameClient = this;
+	ClearUserInfo();
 }
 
 int EXT_FUNC CGameClient::GetId()
@@ -389,7 +390,11 @@ void EXT_FUNC CGameClient::SetUserID(int iUserID)
 
 char *EXT_FUNC CGameClient::GetUserInfo()
 {
+#ifdef REHLDS_FIXES
+	return m_UserInfo;
+#else
 	return m_pClient->userinfo;
+#endif
 }
 
 char *EXT_FUNC CGameClient::GetHashedCDKey()

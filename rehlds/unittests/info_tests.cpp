@@ -330,6 +330,74 @@ TEST(InfoCollectFields, Info, 1000)
 		ZSTR_EQUAL("Invalid info string", d->result, destinfo);
 	}
 }
+
+TEST(InfoShrinkToLength, Info, 1000)
+{
+	struct testdata_t {
+		const char* info;
+		size_t maxsize;
+		const char* result;
+	};
+
+	testdata_t testdata[] = {
+		{ // fits as it is
+			"\\name\\player\\junk\\0123456789",
+			64,
+			"\\name\\player\\junk\\0123456789",
+		},
+		{ // the largest unknown key goes first, the low priority one stays while unknown keys are left
+			"\\name\\player\\_ah\\1\\junk1\\0123456789\\junk2\\01234567890123456789",
+			40,
+			"\\name\\player\\_ah\\1\\junk1\\0123456789",
+		},
+		{ // unknown keys are not enough, the low priority one goes next
+			"\\name\\player\\_ah\\1\\junk1\\0123456789",
+			15,
+			"\\name\\player",
+		},
+	};
+
+	for (int i = 0; i < ARRAYSIZE(testdata); i++) {
+		testdata_t* d = &testdata[i];
+
+		char info[MAX_EXT_INFO_STRING];
+		Q_strcpy(info, d->info);
+		Info_ShrinkToLength(info, d->maxsize);
+
+		CHECK("info string length", Q_strlen(info) < d->maxsize);
+		ZSTR_EQUAL("Invalid info string", d->result, info);
+	}
+}
+
+TEST(InfoCollectFieldsWholeKeys, Info, 1000)
+{
+	// Longer than MAX_INFO_STRING: the keys go whole, the important ones stay, *sid at the end among them
+	char userinfo[MAX_EXT_INFO_STRING];
+	Q_strcpy(userinfo, "\\name\\abcdefghijklmnopqrstuvwxyz01234\\model\\urban\\topcolor\\60\\bottomcolor\\60\\rate\\100000\\cl_updaterate\\101\\cl_lw\\1\\cl_lc\\1\\_vgui_menus\\1\\_cl_autowepswitch\\0");
+
+	for (int i = 0; i < 6; i++)
+		Q_strcat(userinfo, va("\\plugin%i\\0123456789012345678901234567890123456789", i));
+
+	Q_strcat(userinfo, "\\*sid\\76561197960265728");
+
+	sv_rehlds_userinfo_transmitted_fields.string = (char *)"";
+	Info_SetFieldsToTransmit();
+
+	char info[MAX_EXT_INFO_STRING];
+	Info_CollectFields(info, userinfo, MAX_INFO_STRING);
+
+	CHECK("info length", Q_strlen(info) < MAX_INFO_STRING);
+	CHECK("info is valid", Info_IsValid(info) == TRUE);
+	ZSTR_EQUAL("*sid", "76561197960265728", Info_ValueForKey(info, "*sid"));
+	ZSTR_EQUAL("name", "abcdefghijklmnopqrstuvwxyz01234", Info_ValueForKey(info, "name"));
+	ZSTR_EQUAL("private key", "", Info_ValueForKey(info, "_vgui_menus"));
+
+	char extended[MAX_EXT_INFO_STRING];
+	Info_CollectFields(extended, userinfo, MAX_EXT_INFO_STRING);
+
+	ZSTR_EQUAL("plugin key", "0123456789012345678901234567890123456789", Info_ValueForKey(extended, "plugin5"));
+	ZSTR_EQUAL("private key", "", Info_ValueForKey(extended, "_cl_autowepswitch"));
+}
 #endif
 
 TEST(Info_IsKeyImportant, Info, 1000)

@@ -109,6 +109,11 @@ private:
 
 	// Messages of modules for the next update, AddSnapshotMessage
 	CSnapshotMessages m_SnapshotMessages;
+
+#ifdef REHLDS_FIXES
+	// The userinfo of the player; client_t::userinfo keeps its place in the layout unused
+	char m_UserInfo[MAX_EXT_INFO_STRING];
+#endif
 public:
 	CGameClient(int id, client_t* cl);
 
@@ -303,6 +308,7 @@ public:
 
 	void SetProtocolExtensions(const CProtocolAgreement &agreement) { m_ProtocolAgreement = agreement; m_SplitPacketSender.SetMaxRoutable(agreement.GetMaxRoutable()); }
 	void ClearProtocolExtensions() { m_ProtocolAgreement.Clear(); m_SnapshotMessages.Clear(); }
+	void ClearUserInfo() { Q_memset(GetUserInfo(), 0, MAX_CLIENT_INFO_STRING); }
 
 	CSnapshotMessages &GetSnapshotMessages() { return m_SnapshotMessages; }
 

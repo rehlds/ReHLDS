@@ -651,10 +651,13 @@ void EXT_FUNC Cmd_TokenizeString(char *text)
 		}
 
 		arglen = Q_strlen(com_token) + 1;
-		if (arglen >= 516)	// TODO: What is that magic number?
+#ifndef REHLDS_FIXES
+		// A longer token ends the command; COM_TOKEN_LEN of com_token bounds it anyway
+		if (arglen >= 516)
 		{
 			return;
 		}
+#endif
 
 		cmd_argv[cmd_argc] = (char *)Z_Malloc(arglen);
 		Q_strcpy(cmd_argv[cmd_argc++], com_token);

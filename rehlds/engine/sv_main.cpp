@@ -529,6 +529,7 @@ void SV_ClearClient(client_t *cl)
 
 	cl->pGameClient = gameClient;
 	gameClient->SetMoveVars({});
+	gameClient->ClearUserInfo();
 }
 
 void SV_Serverinfo_f(void)
@@ -613,7 +614,7 @@ void SV_User_f(void)
 			{
 				if (cl->userid == uid || !Q_strcmp(cl->name, Cmd_Argv(1)))
 				{
-					Info_Print(cl->userinfo);
+					Info_Print(cl->pGameClient->GetUserInfo());
 					return;
 				}
 			}
@@ -1167,7 +1168,7 @@ void SV_SendServerinfo_internal(sizebuf_t *msg, client_t *client)
 
 #ifdef REHLDS_FIXES
 	// Give the client a chance to connect in to the server with different game
-	const char *gd = Info_ValueForKey(client->userinfo, "_gd");
+	const char *gd = Info_ValueForKey(client->pGameClient->GetUserInfo(), "_gd");
 	if (gd[0])
 		pszGameDir = gd;
 	else
@@ -1827,7 +1828,7 @@ int SV_GetFragmentSize(void *state)
 #endif // REHLDS_FIXES
 	{
 		size = FRAGMENT_S2C_MIN_SIZE;
-		const char *val = Info_ValueForKey(cl->userinfo, "cl_dlmax");
+		const char *val = Info_ValueForKey(cl->pGameClient->GetUserInfo(), "cl_dlmax");
 		if (val[0] != 0)
 		{
 			size = Q_atoi( val );
@@ -2141,7 +2142,7 @@ qboolean SV_CheckForDuplicateNames(char *userinfo, qboolean bIsReconnecting, int
 #ifndef REHLDS_FIXES
  	if (!val || val[0] == '\0' || Q_strstr(val, "..") != NULL || Q_strstr(val, "\"") != NULL || Q_strstr(val, "\\") != NULL)
 	{
-		Info_SetValueForKey(userinfo, "name", "unnamed", MAX_INFO_STRING);
+		Info_SetValueForKey(userinfo, "name", "unnamed", MAX_CLIENT_INFO_STRING);
 		return TRUE;
 	}
 #endif // REHLDS_FIXES
@@ -2176,7 +2177,7 @@ qboolean SV_CheckForDuplicateNames(char *userinfo, qboolean bIsReconnecting, int
 		}
 #endif // REHLDS_FIXES
 
-		Info_SetValueForKey(userinfo, "name", newname, MAX_INFO_STRING);
+		Info_SetValueForKey(userinfo, "name", newname, MAX_CLIENT_INFO_STRING);
 		val = Info_ValueForKey(userinfo, "name");
 		changed = TRUE;
 	}
@@ -2297,11 +2298,11 @@ int EXT_FUNC SV_CheckUserInfo_internal(netadr_t *adr, char *userinfo, qboolean b
 
 	if (name[0] == '\0' || !Q_stricmp(name, "console") || Q_strstr(name, "..") != NULL)
 	{
-		Info_SetValueForKey(userinfo, "name", "unnamed", MAX_INFO_STRING);
+		Info_SetValueForKey(userinfo, "name", "unnamed", MAX_CLIENT_INFO_STRING);
 	}
 	else
 	{
-		Info_SetValueForKey(userinfo, "name", name, MAX_INFO_STRING);
+		Info_SetValueForKey(userinfo, "name", name, MAX_CLIENT_INFO_STRING);
 	}
 
 	if (SV_CheckForDuplicateNames(userinfo, bIsReconnecting, nReconnectSlot))
@@ -2374,7 +2375,7 @@ void EXT_FUNC SV_ConnectClient_internal(void)
 	netadr_t adr;
 	int nClientSlot = 0;
 #ifdef REHLDS_FIXES
-	char userinfo[MAX_INFO_STRING];
+	char userinfo[MAX_CLIENT_INFO_STRING];
 #else
 	char userinfo[1024];
 #endif
@@ -2426,7 +2427,6 @@ void EXT_FUNC SV_ConnectClient_internal(void)
 
 	s = Cmd_Argv(4);
 #ifdef REHLDS_FIXES
-	// truncate to 255 before sanity checks
 	if (Q_strlen(s) > MAX_INFO_STRING - 1 || !Info_IsValid(s))
 #else
 	if (Q_strlen(s) > 256 || !Info_IsValid(s))
@@ -2653,14 +2653,14 @@ void EXT_FUNC SV_ConnectClient_internal(void)
 
 	Log_Printf("\"%s<%i><%s><>\" connected, address \"%s\"\n", name, host_client->userid, SV_GetClientIDString(host_client), NET_AdrToString(host_client->netchan.remote_address));
 #ifdef REHLDS_FIXES
-	Q_strncpy(host_client->userinfo, userinfo, MAX_INFO_STRING - 1);
+	Q_strlcpy(host_client->pGameClient->GetUserInfo(), userinfo, MAX_CLIENT_INFO_STRING);
 #else
 	Q_strncpy(host_client->userinfo, userinfo, MAX_INFO_STRING);
-#endif
 	host_client->userinfo[MAX_INFO_STRING - 1] = 0;
+#endif
 
 	SV_ExtractFromUserinfo(host_client);
-	Info_SetValueForStarKey(host_client->userinfo, "*sid", va("%lld", host_client->network_userid.m_SteamID), MAX_INFO_STRING);
+	Info_SetValueForStarKey(host_client->pGameClient->GetUserInfo(), "*sid", va("%lld", host_client->network_userid.m_SteamID), MAX_CLIENT_INFO_STRING);
 
 	host_client->datagram.flags = SIZEBUF_ALLOW_OVERFLOW;
 	host_client->datagram.data = (byte *)host_client->datagram_buf;
@@ -4226,6 +4226,11 @@ void EXT_FUNC SV_WriteFullClientUpdate_internal(IGameClient *client, char *info,
 	MD5Final(digest, &ctx);
 #endif
 
+#ifdef REHLDS_FIXES
+	// A hook may have grown the copy past what the receiver takes
+	Info_ShrinkToLength(info, maxlen);
+#endif
+
 	MSG_WriteByte(sb, svc_updateuserinfo);
 	MSG_WriteByte(sb, cl - g_psvs.clients);
 	MSG_WriteLong(sb, cl->userid);
@@ -4260,17 +4265,22 @@ void SV_SendFullClientUpdateForAll(client_t *client)
 
 void SV_FullClientUpdate(client_t *cl, sizebuf_t *sb)
 {
-	char info[MAX_INFO_STRING];
+	client_t *receiver = (sb == &g_psv.reliable_datagram) ? nullptr : host_client;
 
 #ifdef REHLDS_FIXES
-	Info_CollectFields(info, cl->userinfo, MAX_INFO_STRING);
+	// A receiver with PROTOCOL_EXT_USERINFO takes the userinfo up to MAX_EXT_INFO_STRING, the others up to MAX_INFO_STRING
+	char info[MAX_EXT_INFO_STRING];
+	const size_t maxlen = (receiver && receiver->pGameClient->HasProtocolExtension(PROTOCOL_EXT_USERINFO)) ? MAX_EXT_INFO_STRING : MAX_INFO_STRING;
+	Info_CollectFields(info, cl->pGameClient->GetUserInfo(), maxlen);
 #else // REHLDS_FIXES
+	char info[MAX_INFO_STRING];
+	const size_t maxlen = MAX_INFO_STRING;
 	Q_strncpy(info, cl->userinfo, sizeof(info) - 1);
 	info[sizeof(info) - 1] = '\0';
 	Info_RemovePrefixedKeys(info, '_');
 #endif // REHLDS_FIXES
 
-	g_RehldsHookchains.m_SV_WriteFullClientUpdate.callChain(SV_WriteFullClientUpdate_internal, GetRehldsApiClient(cl), info, MAX_INFO_STRING, sb, GetRehldsApiClient((sb == &g_psv.reliable_datagram) ? nullptr : host_client));
+	g_RehldsHookchains.m_SV_WriteFullClientUpdate.callChain(SV_WriteFullClientUpdate_internal, GetRehldsApiClient(cl), info, maxlen, sb, GetRehldsApiClient(receiver));
 }
 
 void EXT_FUNC SV_EmitEvents_api(IGameClient *cl, packet_entities_t *pack, sizebuf_t *ms)
@@ -5272,7 +5282,7 @@ void SV_UpdateToReliableMessages(void)
 
 #ifdef REHLDS_FIXES
 		// skip update in this frame if would overflow
-		if (client->sendinfo && client->sendinfo_time <= realtime && (1 + 1 + 4 + (int)Q_strlen(client->userinfo) + 1 + 16 + g_psv.reliable_datagram.cursize <= g_psv.reliable_datagram.maxsize))
+		if (client->sendinfo && client->sendinfo_time <= realtime && (1 + 1 + 4 + (int)Q_strlen(client->pGameClient->GetUserInfo()) + 1 + 16 + g_psv.reliable_datagram.cursize <= g_psv.reliable_datagram.maxsize))
 #else // REHLDS_FIXES
 		if (client->sendinfo && client->sendinfo_time <= realtime)
 #endif // REHLDS_FIXES
@@ -5453,7 +5463,7 @@ void SV_ExtractFromUserinfo(client_t *cl)
 	const char *val;
 	int i;
 	char newname[MAX_NAME];
-	char *userinfo = cl->userinfo;
+	char *userinfo = cl->pGameClient->GetUserInfo();
 
 	val = Info_ValueForKey(userinfo, "name");
 #ifdef REHLDS_FIXES
@@ -5491,11 +5501,11 @@ void SV_ExtractFromUserinfo(client_t *cl)
 	if (newname[0] == '\0' || !Q_stricmp(newname, "console"))
 #endif // REHLDS_FIXES
 	{
-		Info_SetValueForKey(userinfo, "name", "unnamed", MAX_INFO_STRING);
+		Info_SetValueForKey(userinfo, "name", "unnamed", MAX_CLIENT_INFO_STRING);
 	}
 	else if (Q_strcmp(val, newname))
 	{
-		Info_SetValueForKey(userinfo, "name", newname, MAX_INFO_STRING);
+		Info_SetValueForKey(userinfo, "name", newname, MAX_CLIENT_INFO_STRING);
 	}
 
 	// Check for duplicate names

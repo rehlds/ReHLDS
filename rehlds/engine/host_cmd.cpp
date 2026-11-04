@@ -636,15 +636,15 @@ void Host_Status_f(void)
 		Host_Status_Printf(conprint, log, "#%2i %8s %i %s", j + 1, va("\"%s\"", client->name), client->userid, val);
 		if (client->proxy)
 		{
-			const char *userInfo = Info_ValueForKey(client->userinfo, "hspecs");
+			const char *userInfo = Info_ValueForKey(client->pGameClient->GetUserInfo(), "hspecs");
 			if (Q_strlen(userInfo))
 				hltv_specs = Q_atoi(userInfo);
 
-			userInfo = Info_ValueForKey(client->userinfo, "hslots");
+			userInfo = Info_ValueForKey(client->pGameClient->GetUserInfo(), "hslots");
 			if (Q_strlen(userInfo))
 				hltv_slots = Q_atoi(userInfo);
 
-			userInfo = Info_ValueForKey(client->userinfo, "hdelay");
+			userInfo = Info_ValueForKey(client->pGameClient->GetUserInfo(), "hdelay");
 			if (Q_strlen(userInfo))
 				hltv_delay = Q_atoi(userInfo);
 
@@ -2488,7 +2488,7 @@ void Host_FullInfo_f(void)
 	}
 
 #ifdef REHLDS_FIXES
-	char copy[MAX_INFO_STRING];
+	char copy[MAX_CLIENT_INFO_STRING];
 	Q_strlcpy(copy, Cmd_Argv(1));
 
 	char* s = copy;
@@ -2563,7 +2563,7 @@ void Host_FullInfo_f(void)
 			Cmd_ForwardToServer();
 			return;
 		}
-		Info_SetValueForKey(host_client->userinfo, key, value, MAX_INFO_STRING);
+		Info_SetValueForKey(host_client->pGameClient->GetUserInfo(), key, value, MAX_CLIENT_INFO_STRING);
 		host_client->sendinfo = TRUE;
 	}
 }
@@ -2604,7 +2604,7 @@ void Host_SetInfo_f(void)
 		// allow clients to set specific '*' prefixed userinfo keys for avatar IDs
 		if (!Q_strcmp(key + 1, "aid"))
 		{
-			Info_SetValueForStarKey(host_client->userinfo, key, value, MAX_INFO_STRING);
+			Info_SetValueForStarKey(host_client->pGameClient->GetUserInfo(), key, value, MAX_CLIENT_INFO_STRING);
 			host_client->sendinfo = TRUE;
 			return;
 		}
@@ -2615,7 +2615,7 @@ void Host_SetInfo_f(void)
 	}
 #endif
 
-	Info_SetValueForKey(host_client->userinfo, key, value, MAX_INFO_STRING);
+	Info_SetValueForKey(host_client->pGameClient->GetUserInfo(), key, value, MAX_CLIENT_INFO_STRING);
 	host_client->sendinfo = TRUE;
 }
 

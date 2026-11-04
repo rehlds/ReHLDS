@@ -516,7 +516,7 @@ void SV_DropClient_internal(client_t *cl, qboolean crash, const char *string)
 	}
 #endif // REHLDS_FIXES
 	cl->edict = NULL;
-	Q_memset(cl->userinfo, 0, sizeof(cl->userinfo));
+	cl->pGameClient->ClearUserInfo();
 	Q_memset(cl->physinfo, 0, sizeof(cl->physinfo));
 
 #ifdef REHLDS_FIXES

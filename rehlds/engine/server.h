@@ -184,8 +184,12 @@ typedef struct client_frame_s
 
 class CGameClient;
 
-// The room of the userinfo of a player
+// The room of the userinfo of a player, CGameClient::GetUserInfo
+#ifdef REHLDS_FIXES
+const int MAX_CLIENT_INFO_STRING = MAX_EXT_INFO_STRING;
+#else
 const int MAX_CLIENT_INFO_STRING = MAX_INFO_STRING;
+#endif
 
 typedef struct client_s
 {

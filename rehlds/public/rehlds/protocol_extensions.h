@@ -40,7 +40,7 @@ enum ProtocolExtension
 	PROTOCOL_EXT_REPLICATEDCVARS  = 2, // FCVAR_REPLICATED cvar values sent to the client
 	PROTOCOL_EXT_RATE             = 3, // rate above 100000 bytes per second
 	PROTOCOL_EXT_PACKETSIZE       = 4, // packets to the client above 4010 bytes, sent in parts of their own header, parameter "psize"
-	PROTOCOL_EXT_USERINFO         = 5, // reserved
+	PROTOCOL_EXT_USERINFO         = 5, // userinfo of other players up to 1024 bytes, as the server holds it
 	PROTOCOL_EXT_PACKETENTITIES   = 6, // more than 256 entities in a frame, parameter "pents"
 
 	PROTOCOL_EXT_COUNT

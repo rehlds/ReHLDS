@@ -34,6 +34,7 @@ cvar_t sv_rehlds_ext_replicatedcvars = { "sv_rehlds_ext_replicatedcvars", "1", 0
 cvar_t sv_rehlds_ext_rate = { "sv_rehlds_ext_rate", "1", 0, 1.0f, NULL };
 cvar_t sv_rehlds_ext_packetsize = { "sv_rehlds_ext_packetsize", "1", 0, 1.0f, NULL };
 cvar_t sv_rehlds_ext_packetentities = { "sv_rehlds_ext_packetentities", "1", 0, 1.0f, NULL };
+cvar_t sv_rehlds_ext_userinfo = { "sv_rehlds_ext_userinfo", "1", 0, 1.0f, NULL };
 
 // Server limits of the extension parameters; the engine clamps them to what it handles
 cvar_t sv_rehlds_maxpacketsize = { "sv_rehlds_maxpacketsize", "131072", 0, 131072.0f, NULL };
@@ -71,6 +72,7 @@ static const protocol_ext_desc_t g_ProtocolExtensions[] =
 	{ PROTOCOL_EXT_RATE,            "rate",            &sv_rehlds_ext_rate,            -1,                      NULL,    NULL,                         0,                   0                       },
 	{ PROTOCOL_EXT_PACKETSIZE,      "packetsize",      &sv_rehlds_ext_packetsize,      -1,                      "psize", &sv_rehlds_maxpacketsize,     NET_MAX_PACKET,      NET_MAX_EXT_PACKET      },
 	{ PROTOCOL_EXT_PACKETENTITIES,  "packetentities",  &sv_rehlds_ext_packetentities,  PROTOCOL_EXT_PACKETSIZE, "pents", &sv_rehlds_maxpacketentities, MAX_PACKET_ENTITIES, MAX_EXT_PACKET_ENTITIES },
+	{ PROTOCOL_EXT_USERINFO,        "userinfo",        &sv_rehlds_ext_userinfo,        -1,                      NULL,    NULL,                         0,                   0                       },
 };
 
 static_assert(PROTOCOL_EXT_MAX_BITS % 4 == 0, "a hex digit carries four extension numbers");
@@ -336,6 +338,7 @@ void Rehlds_ProtocolExt_Init()
 	Cvar_RegisterVariable(&sv_rehlds_ext_rate);
 	Cvar_RegisterVariable(&sv_rehlds_ext_packetsize);
 	Cvar_RegisterVariable(&sv_rehlds_ext_packetentities);
+	Cvar_RegisterVariable(&sv_rehlds_ext_userinfo);
 	Cvar_RegisterVariable(&sv_rehlds_maxpacketsize);
 	Cvar_RegisterVariable(&sv_rehlds_maxpacketentities);
 	Cvar_RegisterVariable(&sv_rehlds_splitrate);

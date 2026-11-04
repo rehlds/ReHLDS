@@ -1600,7 +1600,7 @@ char* EXT_FUNC PF_GetInfoKeyBuffer_I(edict_t *e)
 #endif // REHLDS_FIXES
 				value = (char *)"";
 			else
-				value = (char *)&g_psvs.clients[e1 - 1].userinfo;
+				value = g_psvs.clients[e1 - 1].pGameClient->GetUserInfo();
 		}
 		else
 		{
@@ -1659,8 +1659,11 @@ void EXT_FUNC PF_SetClientKeyValue_I(int clientIndex, char *infobuffer, const ch
 
 	if (Q_strcmp(Info_ValueForKey(infobuffer, key), value))
 	{
-		Info_SetValueForStarKey(infobuffer, key, value, MAX_INFO_STRING);
 		pClient = &g_psvs.clients[clientIndex - 1];
+
+		// A buffer other than the userinfo of the client holds MAX_INFO_STRING
+		const int maxsize = (infobuffer == pClient->pGameClient->GetUserInfo()) ? MAX_CLIENT_INFO_STRING : MAX_INFO_STRING;
+		Info_SetValueForStarKey(infobuffer, key, value, maxsize);
 		pClient->sendinfo = TRUE;
 		pClient->sendinfo_time = 0.0f;
 	}
@@ -2018,10 +2021,11 @@ edict_t *EXT_FUNC CreateFakeClient_internal(const char *netname)
 	ent->v.pContainingEntity = ent;
 	ent->v.flags = FL_FAKECLIENT | FL_CLIENT;
 
-	Info_SetValueForKey(fakeclient->userinfo, "name", netname, MAX_INFO_STRING);
-	Info_SetValueForKey(fakeclient->userinfo, "model", "gordon", MAX_INFO_STRING);
-	Info_SetValueForKey(fakeclient->userinfo, "topcolor", "1", MAX_INFO_STRING);
-	Info_SetValueForKey(fakeclient->userinfo, "bottomcolor", "1", MAX_INFO_STRING);
+	char *userinfo = fakeclient->pGameClient->GetUserInfo();
+	Info_SetValueForKey(userinfo, "name", netname, MAX_CLIENT_INFO_STRING);
+	Info_SetValueForKey(userinfo, "model", "gordon", MAX_CLIENT_INFO_STRING);
+	Info_SetValueForKey(userinfo, "topcolor", "1", MAX_CLIENT_INFO_STRING);
+	Info_SetValueForKey(userinfo, "bottomcolor", "1", MAX_CLIENT_INFO_STRING);
 	fakeclient->sendinfo = TRUE;
 	SV_ExtractFromUserinfo(fakeclient);
 

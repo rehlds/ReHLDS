@@ -36,6 +36,9 @@ const int MAX_KV_LEN = 127;
 // Key + value + 2 x slash + NULL
 const int MAX_INFO_STRING = 256;
 
+// The userinfo of a player on the server, and what a client with PROTOCOL_EXT_USERINFO takes of other players
+const int MAX_EXT_INFO_STRING = 1024;
+
 const int INFO_MAX_BUFFER_VALUES = 4;
 
 #ifdef REHLDS_FIXES
@@ -56,4 +59,5 @@ qboolean Info_IsValid(const char *s);
 #ifdef REHLDS_FIXES
 void Info_SetFieldsToTransmit();
 void Info_CollectFields(char *destInfo, const char *srcInfo, size_t maxsize);
+void Info_ShrinkToLength(char *s, size_t maxsize);
 #endif
