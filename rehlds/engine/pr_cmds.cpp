@@ -42,7 +42,7 @@ vec_t gHullMaxs[4][3] = {
 		{ 16.0f,  16.0f,  18.0f },
 };
 
-unsigned char gMsgData[512];
+unsigned char gMsgData[MAX_MSG_DATA];
 
 edict_t *gMsgEntity;
 int gMsgDest;

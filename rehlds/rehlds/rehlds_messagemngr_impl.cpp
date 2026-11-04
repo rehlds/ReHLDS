@@ -31,7 +31,7 @@ public:
 	 * @brief Returns the number of parameters in the message
 	 * @return The number of parameters
 	 */
-	int getParamCount() const { return m_paramCount; }
+	int getParamCount() const { return (int)m_paramCount; }
 
 	/**
 	 * @brief Returns the type of the parameter at the given index
@@ -231,10 +231,48 @@ private:
 		MAX_STORAGE
 	};
 
+	/**
+	 * @brief Elements live inside the object while they fit and move to a heap block when they don't.
+	 * The block stays with the pooled message, so it allocates only for a size it never held before.
+	 */
+	template <typename T, size_t INLINE_COUNT>
+	class MessageBuffer
+	{
+	public:
+		T *base()             { return m_heap ? m_heap.get() : m_inline; }
+		const T *base() const { return m_heap ? m_heap.get() : m_inline; }
+		size_t capacity() const { return m_heap ? m_heapCount : INLINE_COUNT; }
+
+		T &operator[](size_t index)             { return base()[index]; }
+		const T &operator[](size_t index) const { return base()[index]; }
+
+		// Makes room for count elements, keeping the first used ones
+		void reserve(size_t count, size_t used)
+		{
+			if (count <= capacity())
+				return;
+
+			size_t newCount = capacity() * 2;
+			while (newCount < count)
+				newCount *= 2;
+
+			std::unique_ptr<T[]> heap(new T[newCount]);
+			Q_memcpy(heap.get(), base(), used * sizeof(T));
+			m_heap = std::move(heap);
+			m_heapCount = newCount;
+		}
+
+	private:
+		T m_inline[INLINE_COUNT]{};
+		std::unique_ptr<T[]> m_heap;
+		size_t m_heapCount{0};
+	};
+
 	struct Storage_t
 	{
-		// The buffer storage data for the message 'm_buffer' (variable-length message limited to one byte is 256)
-		uint8 bufData[256]{};
+		// The message body, as large as the buffer MessageBegin/End writes it into: a message
+		// of the engine sent by the game DLL is not bound by the size limit of user messages
+		uint8 bufData[MAX_MSG_DATA]{};
 
 		// The buffer for the message
 		sizebuf_t buf = { "MsgMngr/Begin/End", SIZEBUF_ALLOW_OVERFLOW, bufData, sizeof(bufData), 0 };
@@ -254,22 +292,20 @@ private:
 
 	Storage_t m_Storage[MAX_STORAGE];
 
-#pragma pack(push, 1)
 	struct Param_t
 	{
-		bool		modified : 1; // Flag indicating whether the message param has been modified
-		ParamType	type     : 3; // The type of the parameter
-		size_t		posBack  : 9; // The current position of the parameter in the buffer
-		size_t		posFront : 9; // The stock position of the parameter in the buffer
-		size_t		oldlen   : 9; // The length of the parameter in the buffer
-		size_t		newlen   : 9; // The length of the parameter in the buffer
-		bool		sign[MAX_STORAGE]; // Flag indicating that it has a signed value
+		bool      modified;          // Flag indicating whether the message param has been modified
+		ParamType type;              // The type of the parameter
+		bool      sign[MAX_STORAGE]; // Flag indicating that it has a signed value
+		uint32    posBack;           // The current position of the parameter in the buffer
+		uint32    posFront;          // The stock position of the parameter in the buffer
+		uint32    oldlen;            // The length of the parameter in the buffer
+		uint32    newlen;            // The length of the parameter in the buffer
 	};
-#pragma pack(pop)
 
-	static const size_t MAX_PARAMS = 32; // The maximum number of parameters allowed in the message
-	Param_t m_params[MAX_PARAMS]{};      // The array of parameters in the message
-	size_t  m_paramCount : 5;            // The number of parameters in the message
+	static const size_t MAX_PARAMS = 32;           // Parameters held without an allocation
+	MessageBuffer<Param_t, MAX_PARAMS> m_params;   // The array of parameters in the message
+	size_t m_paramCount;                           // The number of parameters in the message
 
 	void resetParam(size_t index);
 
@@ -372,7 +408,10 @@ static size_t SIZEOF_PARAMTYPE[] =
 // Adds a parameter to the message
 void MessageImpl::addParam(IMessage::ParamType type, bool sign, size_t length)
 {
+	m_params.reserve(m_paramCount + 1, m_paramCount);
+
 	Param_t &param = m_params[m_paramCount++];
+	param.modified   = false;
 	param.type       = type;
 	param.newlen     = param.oldlen = (length == -1) ? SIZEOF_PARAMTYPE[static_cast<size_t>(type)] : length;
 	param.posBack    = param.posFront = gMsgBuffer.cursize;
@@ -454,7 +493,7 @@ void MessageImpl::setTxformBuffer(size_t index, size_t startPos, size_t oldLengt
 		{
 			Sys_Error(
 				"%s: Refusing to transform string with %i param of user message of %i bytes, "
-				"user message size limit is %i bytes\n", __func__, index, gMsgBuffer.cursize + diffLength, gMsgBuffer.maxsize);
+				"user message size limit is %i bytes\n", __func__, index, buf.cursize + diffLength, buf.maxsize);
 		}
 
 		// Move the data in the buffer
@@ -623,7 +662,7 @@ void MessageImpl::setParamVec(size_t index, const float *pos)
 	// Get the parameter position in the buffer
 	Param_t &param = m_params[index];
 
-	int16 *pbuf = (int16 *)m_Storage[BACK].buf.data + param.posBack;
+	int16 *pbuf = (int16 *)(m_Storage[BACK].buf.data + param.posBack);
 
 	// Set each component of the vector parameter
 	*(int16 *)pbuf++ = (int16)(pos[0] * 8.0);
@@ -785,7 +824,8 @@ bool MessageImpl::resetModifiedData(DataType type, size_t index)
 		}
 
 		// Copy front storage data to back buffer data
-		Q_memcpy(storageBack.buf.data, storageFront.buf.data, storageFront.buf.maxsize);
+		Q_memcpy(storageBack.buf.data, storageFront.buf.data, storageFront.buf.cursize);
+		storageBack.buf.cursize = storageFront.buf.cursize;
 
 		storageBack.dest  = storageFront.dest;
 		storageBack.msgid = storageFront.msgid;
