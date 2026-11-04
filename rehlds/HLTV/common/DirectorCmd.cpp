@@ -556,6 +556,9 @@ bool DirectorCmd::ReadFromStream(BitBuffer *stream)
 	{
 		Resize(1);
 		length = stream->ReadByte();
+		if (length < 0) {
+			return false;
+		}
 		m_Data.WriteByte(length);
 		stream->SkipBytes(length * 14);
 		break;

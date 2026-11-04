@@ -480,7 +480,8 @@ int FileSystem_Init(const char *basedir, void *voidfilesystemFactory)
 	Q_strncpy(s_pBaseDir, basedir, ARRAYSIZE(s_pBaseDir));
 	s_pBaseDir[ARRAYSIZE(s_pBaseDir) - 1] = 0;
 #else
-	Q_strcpy(s_pBaseDir, basedir);
+	Q_strncpy(s_pBaseDir, basedir, ARRAYSIZE(s_pBaseDir) - 1);
+	s_pBaseDir[ARRAYSIZE(s_pBaseDir) - 1] = 0;
 #endif
 
 	host_parms.basedir = s_pBaseDir;

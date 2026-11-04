@@ -56,6 +56,13 @@ bool CIPRateLimit::CheckIP(netadr_t adr)
 {
 	time_t curTime = CRehldsPlatformHolder::get()->time(nullptr);
 
+// Guard against a zero/negative window, which would turn the rate
+	// computation into a division by zero (inf) and block all traffic.
+	float window = max_queries_window.value;
+	if (window <= 0.0f) {
+		window = 1.0f;
+	}
+
 	// check the per ip rate (do this first, so one person dosing doesn't add to the global max rate
 	ip_t clientIP;
 	Q_memcpy(&clientIP, adr.ip, sizeof(ip_t));
@@ -93,14 +100,14 @@ bool CIPRateLimit::CheckIP(netadr_t adr)
 	{
 		m_IPTree[entry].count++; // a new hit
 
-		if ((curTime - m_IPTree[entry].lastTime) > max_queries_window.value)
+		if ((curTime - m_IPTree[entry].lastTime) > window)
 		{
 			m_IPTree[entry].lastTime = curTime;
 			m_IPTree[entry].count = 1;
 		}
 		else
 		{
-			float query_rate = static_cast<float>(m_IPTree[entry].count) / max_queries_window.value; // add one so the bottom is never zero
+			float query_rate = static_cast<float>(m_IPTree[entry].count) / window;
 			if (query_rate > max_queries_sec.value)
 			{
 				return false;
@@ -120,14 +127,14 @@ bool CIPRateLimit::CheckIP(netadr_t adr)
 	// now check the global rate
 	m_iGlobalCount++;
 
-	if ((curTime - m_lLastTime) > max_queries_window.value)
+	if ((curTime - m_lLastTime) > window)
 	{
 		m_lLastTime = curTime;
 		m_iGlobalCount = 1;
 	}
 	else
 	{
-		float query_rate = static_cast<float>(m_iGlobalCount) / max_queries_window.value; // add one so the bottom is never zero
+		float query_rate = static_cast<float>(m_iGlobalCount) / window; // add one so the bottom is never zero
 		if (query_rate > max_queries_sec_global.value)
 		{
 			return false;

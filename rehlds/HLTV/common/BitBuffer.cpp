@@ -694,6 +694,10 @@ char *BitBuffer::ReadBitString()
 			break;
 		}
 
+		if (p >= &buf[sizeof(buf) - 1]) {
+			break;
+		}
+
 		*p++ = c;
 	}
 

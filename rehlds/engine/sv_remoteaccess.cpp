@@ -52,18 +52,18 @@ void CServerRemoteAccess::WriteDataRequest(const void *buffer, int bufferSize)
 	switch (requestType)
 	{
 	case 0:
-		cmd.GetString(variable);
+		cmd.GetString(variable, sizeof(variable));
 		RequestValue(requestID, variable);
 		break;
 
 	case 1:
-		cmd.GetString(variable);
-		cmd.GetString(value);
+		cmd.GetString(variable, sizeof(variable));
+		cmd.GetString(value, sizeof(value));
 		SetValue(variable, value);
 		break;
 
 	case 2:
-		cmd.GetString(command);
+		cmd.GetString(command, sizeof(command));
 		ExecCommand(command);
 	}
 }

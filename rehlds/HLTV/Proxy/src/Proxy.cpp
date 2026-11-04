@@ -1493,6 +1493,7 @@ void Proxy::StopBroadcast(const char *message)
 void Proxy::ExecuteRcon(NetAddress *from, char *command)
 {
 	char outputbuf[1024];
+	outputbuf[0] = '\0';
 	m_System->Printf("Executing rcon \"%s\" from %s.\n", command, from->ToString());
 
 	m_System->RedirectOutput(outputbuf + 1, sizeof(outputbuf) - 1);
@@ -1524,7 +1525,7 @@ bool Proxy::ProcessConnectionlessMessage(NetAddress *from, BitBuffer *stream)
 	if (SteamGameServer())
 	{
 		const int maxBuffer = 4096;
-		unsigned char data[maxBuffer];
+		unsigned char data[maxBuffer + 4];
 		int maxSize = Q_min(stream->m_MaxSize, maxBuffer);
 
 		Q_memcpy((char *)&data[4], stream->m_Data, maxSize);

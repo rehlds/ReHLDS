@@ -40,7 +40,7 @@ CDlFileRateLimiter g_DlFileRateLimiter;
 CMoveCommandRateLimiter::CMoveCommandRateLimiter() {
 	Q_memset(m_AverageMoveCmdRate, 0, sizeof(m_AverageMoveCmdRate));
 	Q_memset(m_CurrentMoveCmds, 0, sizeof(m_CurrentMoveCmds));
-	m_LastCheckTime = 0.0;
+	m_LastCheckTime = realtime;
 }
 
 void CMoveCommandRateLimiter::UpdateAverageRates(double dt) {
@@ -121,7 +121,7 @@ void CMoveCommandRateLimiter::CheckAverageRate(unsigned int clientId) {
 CStringCommandsRateLimiter::CStringCommandsRateLimiter() {
 	Q_memset(m_AverageStringCmdRate, 0, sizeof(m_AverageStringCmdRate));
 	Q_memset(m_CurrentStringCmds, 0, sizeof(m_CurrentStringCmds));
-	m_LastCheckTime = 0.0;
+	m_LastCheckTime = realtime;
 }
 
 void CStringCommandsRateLimiter::UpdateAverageRates(double dt) {

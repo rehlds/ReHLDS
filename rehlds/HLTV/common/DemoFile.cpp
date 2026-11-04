@@ -530,6 +530,12 @@ void DemoFile::ReadDemoPacket(BitBuffer *demoData, demo_info_t *demoInfo)
 			break;
 		}
 
+		if (msglen < 0 || msglen > MAX_POSSIBLE_MSG)
+		{
+			m_System->DPrintf("WARNING! DemoFile::ReadDemoPacket: invalid demo command length %i\n", msglen);
+			return;
+		}
+
 		if (msglen)
 		{
 			m_FileSystem->Read(msgbuf, msglen, m_FileHandle);

@@ -293,7 +293,7 @@ void Cmd_StuffCmds_f(void)
 			Q_strcat(build, &com_argv[i][1]);
 			// Then add all following parameters till we meet argument with + or -, which means next command/cvar/parameter
 			i++;
-			while (com_argv[i] && com_argv[i][0] != '+' && com_argv[i][0] != '-')
+			while (i < com_argc && com_argv[i] && com_argv[i][0] != '+' && com_argv[i][0] != '-')
 			{
 				Q_strcat(build, " ");
 				Q_strcat(build, com_argv[i]);
