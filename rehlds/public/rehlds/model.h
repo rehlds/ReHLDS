@@ -211,6 +211,7 @@ typedef struct hull_s
 	int				lastclipnode;
 	vec3_t			clip_mins, clip_maxs;
 } hull_t;
+typedef enum { point_hull = 0, human_hull = 1, large_hull = 2, head_hull = 3 };
 
 typedef struct mspriteframe_t
 {
