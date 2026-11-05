@@ -121,7 +121,13 @@ float READ_FLOAT( void )
 		float   f;
 		int     l;
 	} dat;
-	
+
+	if (giRead+4 > giSize)
+	{
+		giBadRead = true;
+		return 0.0f;
+	}
+
 	dat.b[0] = gpBuf[giRead];
 	dat.b[1] = gpBuf[giRead+1];
 	dat.b[2] = gpBuf[giRead+2];

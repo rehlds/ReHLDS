@@ -2721,7 +2721,10 @@ void EXT_FUNC PF_SetPhysicsKeyValue(const edict_t *pClient, const char *key, con
 {
 	int entnum = NUM_FOR_EDICT(pClient);
 	if (entnum < 1 || entnum > g_psvs.maxclients)
+	{
 		Con_Printf("tried to %s a non-client\n", __func__);
+		return;
+	}
 
 	client_t* client = &g_psvs.clients[entnum - 1];
 	Info_SetValueForKey(client->physinfo, key, value, MAX_INFO_STRING);

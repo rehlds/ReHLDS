@@ -917,6 +917,9 @@ int Delta::ParseDelta(BitBuffer *stream, unsigned char *from, unsigned char *to,
 			do
 			{
 				c = stream->ReadBits(8);
+				if (stream->IsOverflowed()) {
+					break;
+				}
 				*st2++ = c;
 			} while (c);
 			break;

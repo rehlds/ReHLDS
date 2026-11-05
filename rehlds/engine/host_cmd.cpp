@@ -511,7 +511,8 @@ void Host_Status_Printf(qboolean conprint, qboolean log, char *fmt, ...)
 	char szfile[260];
 #endif
 	va_start(argptr, fmt);
-	vsprintf(string, fmt, argptr);
+	Q_vsnprintf(string, sizeof(string), fmt, argptr);
+	string[sizeof(string) - 1] = 0;
 	va_end(argptr);
 
 	if (conprint)
@@ -1523,6 +1524,16 @@ int SaveReadHeader(FileHandle_t pFile, GAME_HEADER *pHeader, int readGlobalState
 	FS_Read(&tokenCount, sizeof(int), 1, pFile);
 	FS_Read(&tokenSize, sizeof(int), 1, pFile);
 
+	// Validate header sizes read from the file to prevent integer overflow or
+	// a huge allocation from a malformed/corrupt save file.
+	if (size < 0 || tokenCount < 0 || tokenSize < 0 ||
+		(int64_t)size + (int64_t)tokenSize > 1024 * 1024 * 512)
+	{
+		Con_Printf("%s: invalid save header sizes (size=%i, tokenCount=%i, tokenSize=%i)\n", __func__, size, tokenCount, tokenSize);
+		FS_Close(pFile);
+		return 0;
+	}
+
 	pSaveData = (SAVERESTOREDATA *)Mem_Calloc(sizeof(SAVERESTOREDATA) + tokenSize + size, sizeof(char));
 	pSaveData->tableCount = 0;
 	pSaveData->pTable = NULL;
@@ -1860,6 +1871,16 @@ SAVERESTOREDATA *LoadSaveData(const char *level)
 	FS_Read(&tokenCount, sizeof(int), 1, pFile);
 	FS_Read(&tokenSize, sizeof(int), 1, pFile);
 
+	// Validate header sizes read from the file to prevent integer overflow or
+	// a huge allocation from a malformed/corrupt save file.
+	if (size < 0 || tableCount < 0 || tokenCount < 0 || tokenSize < 0 ||
+		(int64_t)size + (int64_t)tokenSize + (int64_t)sizeof(ENTITYTABLE) * tableCount > 1024 * 1024 * 512)
+	{
+		Con_Printf("%s: invalid save header sizes (size=%i, tableCount=%i, tokenCount=%i, tokenSize=%i)\n", __func__, size, tableCount, tokenCount, tokenSize);
+		FS_Close(pFile);
+		return NULL;
+	}
+
 	pSaveData = (SAVERESTOREDATA *)Mem_Calloc(size + tokenSize + sizeof(ENTITYTABLE) * tableCount + sizeof(SAVERESTOREDATA), 1u);
 	pSaveData->tableCount = tableCount;
 	pSaveData->tokenCount = tokenCount;
@@ -1935,6 +1956,11 @@ void ParseSaveTables(SAVERESTOREDATA *pSaveData, SAVE_HEADER *pHeader, int updat
 		gEntityInterface.pfnSaveReadFields(pSaveData, "LIGHTSTYLE", &light, gLightstyleDescription, ARRAYSIZE(gLightstyleDescription));
 		if (updateGlobals)
 		{
+			if (light.index < 0 || light.index >= MAX_LIGHTSTYLES)
+			{
+				Con_Printf("%s: invalid lightstyle index %i\n", __func__, light.index);
+				continue;
+			}
 #ifdef REHLDS_FIXES
 			Q_strlcpy(g_rehlds_sv.lightstyleBuffers[light.index], light.style);
 			g_psv.lightstyles[light.index] = g_rehlds_sv.lightstyleBuffers[light.index];
@@ -2334,7 +2360,7 @@ void DirectoryExtract(FileHandle_t pFile, int fileCount)
 		Q_snprintf(szName, sizeof(szName), "%s%s", Host_SaveGameDirectory(), fileName);
 		COM_FixSlashes(szName);
 		pCopy = FS_OpenPathID(szName, "wb", "GAMECONFIG");
-		FileCopy(pCopy, pFile, fileCount);
+		FileCopy(pCopy, pFile, fileSize);
 		FS_Close(pCopy);
 	}
 }

@@ -50,6 +50,7 @@ extern char loadname[MAX_MODEL_NAME];
 extern model_t mod_known[MAX_KNOWN_MODELS];
 extern int mod_numknown;
 extern unsigned char* mod_base;
+extern int mod_filelength;
 extern char *wadpath;
 extern int tested;
 extern int ad_enabled;

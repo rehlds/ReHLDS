@@ -36,7 +36,8 @@ void *Mem_Malloc(size_t size)
 void *Mem_ZeroMalloc(size_t size)
 {
 	void *p = malloc(size);
-	Q_memset(p, 0, size);
+	if (p)
+		Q_memset(p, 0, size);
 	return p;
 }
 

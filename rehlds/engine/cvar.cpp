@@ -216,6 +216,8 @@ void EXT_FUNC Cvar_DirectSet_internal(struct cvar_s *var, const char *value)
 					pS++;
 					continue;
 				}
+				if (pD >= &szNew[ARRAYSIZE(szNew) - 1])
+					break;
 				*pD++ = *pS++;
 			}
 			*pD = 0;

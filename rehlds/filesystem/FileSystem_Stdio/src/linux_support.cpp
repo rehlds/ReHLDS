@@ -236,15 +236,15 @@ const char *findFileInDirCaseInsensitive(const char *file)
 
 	if (n > 0)
 	{
-		while (n > 1)
-		{
-			// free the malloc'd strings
-			free(namelist[n]);
-			n--;
-		}
-
 		Q_snprintf(fileName, sizeof(fileName), "%s/%s", dirName, namelist[0]->d_name);
-		free(namelist[0]);
+
+		// Free the malloc'd strings and the namelist array itself.
+		for (int i = 0; i < n; i++)
+		{
+			free(namelist[i]);
+		}
+		free(namelist);
+
 		return fileName;
 	}
 	else

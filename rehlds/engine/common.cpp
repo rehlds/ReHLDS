@@ -790,6 +790,10 @@ char *MSG_ReadBitString(void)
 			break;
 		}
 #endif
+		if (p >= &buf[sizeof(buf) - 1])	// Prevent stack buffer overflow
+		{
+			break;
+		}
 		*p++ = c;
 	}
 
@@ -1277,7 +1281,7 @@ void SZ_Print(sizebuf_t *buf, const char *data)
 	unsigned char *pData;
 	int len = Q_strlen(data) + 1;
 
-	if (buf->data[buf->cursize - 1])
+	if (buf->cursize > 0 && buf->data[buf->cursize - 1])
 	{
 		pData = (unsigned char *)SZ_GetSpace(buf, len);
 	}
