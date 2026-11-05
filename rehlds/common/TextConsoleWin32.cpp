@@ -84,7 +84,10 @@ bool CTextConsoleWin32::Init(IBaseSystem *system)
 	if (!AllocConsole())
 		m_System = system;
 
-	SetTitle(m_System ? m_System->GetName() : "Console");
+	char buffer[256];
+	snprintf(buffer, sizeof(buffer), "[ReHLDS " APP_VERSION "] %s", m_System ? m_System->GetName() : "Console");
+	SetTitle(buffer);
+	//SetTitle(m_System ? m_System->GetName() : "Console");
 
 	hinput = GetStdHandle(STD_INPUT_HANDLE);
 	houtput = GetStdHandle(STD_OUTPUT_HANDLE);
