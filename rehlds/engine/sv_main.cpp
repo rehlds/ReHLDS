@@ -6828,6 +6828,9 @@ static void SV_NotifyIPBanAdded(const ipfilter_t &f, float banTime)
 		Q_snprintf(reason, sizeof(reason), "for %g minutes", banTime);
 
 	Con_Printf("Ban: \"%s\" was added to the IP ban list %s\n", strFilter, reason);
+
+	if (sv_logbans.value != 0.0f)
+		Log_Printf("Ban: \"%s\" was added to the IP ban list %s\n", strFilter, reason);
 }
 #endif // REHLDS_FIXES
 
@@ -7147,6 +7150,10 @@ void SV_BanId_f(void)
 
 	if (!bKick)
 	{
+#ifdef REHLDS_FIXES
+		Con_Printf("Ban: \"<><%s><>\" was banned \"%s\" by \"%s\"\n", SV_GetIDString(id), szreason, pszCmdGiver);
+#endif // REHLDS_FIXES
+
 		if (sv_logbans.value != 0.0f)
 			Log_Printf("Ban: \"<><%s><>\" was banned \"%s\" by \"%s\"\n", SV_GetIDString(id), szreason, pszCmdGiver);
 
@@ -7166,6 +7173,12 @@ void SV_BanId_f(void)
 		if (SV_CompareUserID(&cl->network_userid, id))
 		{
 			host_client = cl;
+#ifdef REHLDS_FIXES
+			Con_Printf(
+				"Ban: \"%s<%i><%s><>\" was kicked and banned \"%s\" by \"%s\"\n",
+				host_client->name, host_client->userid, SV_GetClientIDString(host_client), szreason, pszCmdGiver
+				);
+#endif // REHLDS_FIXES
 			if (sv_logbans.value != 0.0f)
 			{
 				Log_Printf(
