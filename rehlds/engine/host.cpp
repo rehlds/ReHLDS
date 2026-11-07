@@ -456,6 +456,8 @@ void SV_DropClient_internal(client_t *cl, qboolean crash, const char *string)
 	unsigned char final[512];
 	float connection_time;
 
+	NetRecord_ClientDropped(cl, string);
+
 	i = 0;
 
 	if (!crash)
@@ -931,6 +933,7 @@ void _Host_Frame(float time)
 
 	Host_Speeds(host_times);
 	++host_framecount;
+	NetRecord_Frame(host_framecount);
 	CL_AdjustClock();
 
 	if (sv_stats.value == 1.0f)
@@ -1152,6 +1155,8 @@ int Host_Init(quakeparms_t *parms)
 	//Rehlds Security
 	Rehlds_Security_Init();
 
+	NetRecord_Init();
+
 
 	Q_snprintf(versionString, sizeof(versionString), "%s,%i,%i", gpszVersionString, PROTOCOL_VERSION, build_number());
 	Cvar_Set("sv_version", versionString);
@@ -1250,6 +1255,8 @@ void Host_Shutdown(void)
 
 	//Rehlds Security
 	Rehlds_Security_Shutdown();
+
+	NetRecord_Shutdown();
 
 	Cmd_RemoveGameCmds();
 	Cmd_Shutdown();

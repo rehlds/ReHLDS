@@ -185,7 +185,10 @@ set(ENGINE_SRCS
 	rehlds/rehlds_messagemngr_impl.cpp
 	rehlds/rehlds_studio_impl.cpp
 	rehlds/rehlds_security.cpp
+	rehlds/rehlds_net_record.cpp
 )
+
+include("${PROJECT_SOURCE_DIR}/../dep/netinspector/cmake/NetInspector.cmake")
 
 set(UNITTESTS_SRCS
 	unittests/common_tests.cpp
@@ -243,6 +246,7 @@ target_include_directories(engine PRIVATE
 	${PROJECT_BZIP2_DIR}
 	${PROJECT_CPPUNITLITE_DIR}
 	${PROJECT_PUBLIC_DIR}
+	${NETINSPECTOR_INCLUDE_DIRS}
 )
 
 target_compile_definitions(engine PRIVATE
@@ -273,6 +277,7 @@ target_compile_definitions(engine PRIVATE
 target_sources(engine PRIVATE
 	${COMMON_SRCS}
 	${PUBLIC_SRCS}
+	${NETINSPECTOR_SOURCES}
 
 	$<$<CONFIG:Unittests>:
 	${UNITTESTS_SRCS}>
@@ -282,6 +287,7 @@ target_link_libraries(engine PRIVATE
 	dl
 	rt
 	m
+	pthread
 	aelf32
 	bzip2
 	steam_api

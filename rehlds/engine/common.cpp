@@ -1252,6 +1252,8 @@ void *EXT_FUNC SZ_GetSpace(sizebuf_t *buf, int length)
 		Con_Printf("%s: overflow on %s\n", __func__, buffername);
 #endif // REHLDS_FIXES
 
+		NetRecord_BufferOverflowed(buf, length);
+
 		SZ_Clear(buf);
 		buf->flags |= SIZEBUF_OVERFLOWED;
 	}

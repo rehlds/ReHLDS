@@ -141,6 +141,7 @@
     </ClCompile>
     <ClCompile Include="..\rehlds\RehldsRuntimeConfig.cpp" />
     <ClCompile Include="..\rehlds\rehlds_security.cpp" />
+    <ClCompile Include="..\rehlds\rehlds_net_record.cpp" />
     <ClCompile Include="..\rehlds\structSizeCheck.cpp" />
     <ClCompile Include="..\testsuite\anonymizer.cpp" />
     <ClCompile Include="..\testsuite\funccalls.cpp" />
@@ -463,6 +464,7 @@
     <ClInclude Include="..\rehlds\rehlds_api_impl.h" />
     <ClInclude Include="..\rehlds\rehlds_interfaces_impl.h" />
     <ClInclude Include="..\rehlds\rehlds_security.h" />
+    <ClInclude Include="..\rehlds\rehlds_net_record.h" />
     <ClInclude Include="..\testsuite\anonymizer.h" />
     <ClInclude Include="..\testsuite\funccalls.h" />
     <ClInclude Include="..\testsuite\memory.h" />
@@ -547,6 +549,9 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+    <Import Project="..\..\dep\netinspector\msvc\NetInspector.vcxitems" Label="Shared" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />

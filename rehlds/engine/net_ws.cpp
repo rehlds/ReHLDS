@@ -914,6 +914,8 @@ qboolean NET_QueuePacket(netsrc_t sock)
 				continue;
 			}
 
+			NetRecord_DatagramReceived(sock, from, buf, ret);
+
 			SockadrToNetadr(&from, &in_from);
 			if (ret != MAX_UDP_PACKET)
 				break;
@@ -1346,6 +1348,8 @@ int NET_SendLong(netsrc_t sock, SOCKET s, const char *buf, int len, int flags, c
 					NET_AdrToString(adr));
 			}
 
+			NetRecord_DatagramSent(sock, *to, packet, size + sizeof(SPLITPACKET));
+
 			int ret = CRehldsPlatformHolder::get()->sendto(s, packet, size + sizeof(SPLITPACKET), flags, to, tolen);
 			if (ret < 0)
 			{
@@ -1363,6 +1367,8 @@ int NET_SendLong(netsrc_t sock, SOCKET s, const char *buf, int len, int flags, c
 
 		return totalSent;
 	}
+
+	NetRecord_DatagramSent(sock, *to, buf, len);
 
 	int nSend = CRehldsPlatformHolder::get()->sendto(s, buf, len, flags, to, tolen);
 	return nSend;

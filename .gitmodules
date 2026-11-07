@@ -1,0 +1,3 @@
+[submodule "dep/netinspector"]
+	path = dep/netinspector
+	url = https://github.com/rehlds/NetInspector.git

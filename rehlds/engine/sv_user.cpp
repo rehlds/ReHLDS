@@ -1825,6 +1825,8 @@ void SV_ExecuteClientMessage(client_t *cl)
 	cl->delta_sequence = -1;
 	pmove = &g_svmove;
 
+	NetRecord_ClientMessagesStarted(cl);
+
 	while (true)
 	{
 		if (msg_badread)
@@ -1836,12 +1838,12 @@ void SV_ExecuteClientMessage(client_t *cl)
 #else // REHLDS_FIXES
 			Con_Printf("SV_ReadClientMessage: badread\n");
 #endif // REHLDS_FIXES
-			return;
+			break;
 		}
 
 		int c = MSG_ReadByte();
 		if (c == -1)
-			return;
+			break;
 
 		g_RehldsHookchains.m_HandleNetCommand.callChain(SV_HandleClientMessage_api, cl->pGameClient, c);
 
@@ -1851,6 +1853,8 @@ void SV_ExecuteClientMessage(client_t *cl)
 			break;
 #endif // REHLDS_FIXES
 	}
+
+	NetRecord_ClientMessagesFinished();
 }
 
 qboolean SV_SetPlayer(int idnum)

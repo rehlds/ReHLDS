@@ -162,4 +162,7 @@ Global
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {3225EDB9-2B71-42E4-99DB-ED6E6E2A2EC6}
 	EndGlobalSection
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		..\dep\netinspector\msvc\NetInspector.vcxitems*{70a2b904-b7db-4c48-8de0-af567360d572}*SharedItemsImports = 4
+	EndGlobalSection
 EndGlobal

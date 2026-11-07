@@ -2575,6 +2575,7 @@ void EXT_FUNC SV_ConnectClient_internal(void)
 	);
 
 	Log_Printf("\"%s<%i><%s><>\" connected, address \"%s\"\n", name, host_client->userid, SV_GetClientIDString(host_client), NET_AdrToString(host_client->netchan.remote_address));
+	NetRecord_ClientConnected(host_client);
 #ifdef REHLDS_FIXES
 	Q_strncpy(host_client->userinfo, userinfo, MAX_INFO_STRING - 1);
 #else
@@ -6312,6 +6313,7 @@ void EXT_FUNC SV_ActivateServer_internal(int runPhysics)
 #endif
 	g_psv.active = TRUE;
 	g_psv.state = ss_active;
+	NetRecord_ServerActivated();
 	ContinueLoadingProgressBar("Server", 10, 0.0f);
 
 	if (!runPhysics)
@@ -6778,6 +6780,7 @@ int EXT_FUNC SV_RegUserMsg(const char *pszName, int iSize)
 	Q_strcpy(pNewMsg->szName, pszName);
 	pNewMsg->next = sv_gpNewUserMsgs;
 	sv_gpNewUserMsgs = pNewMsg;
+	NetRecord_UserMessagesChanged();
 
 	return pNewMsg->iMsg;
 }
