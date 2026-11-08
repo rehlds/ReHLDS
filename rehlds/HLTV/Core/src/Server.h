@@ -272,4 +272,8 @@ protected:
 	InfoString m_ServerInfo;
 	bool m_DelayReconnect;
 	unsigned int m_SeqNrMap[256];
+
+#ifdef HLTV_FIXES
+	bool m_PendingIntermission;
+#endif
 };
