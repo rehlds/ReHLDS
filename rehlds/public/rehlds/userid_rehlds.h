@@ -42,5 +42,6 @@ typedef struct USERID_s
 {
 	int idtype;
 	uint64 m_SteamID;
+	uint64 m_SteamIDValidated;
 	unsigned int clientip;
 } USERID_t;
