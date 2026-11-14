@@ -82,8 +82,16 @@ private:
 	// and client is not yet initialized ScoreBoard which leads to memory corruption in the client.
 	bool m_bSpawnedOnce;
 
+	// Movement variables of this client: the global ones as a base, changed by the game DLL in PM_Move
+	movevars_t m_MoveVars;
+
 #ifdef REHLDS_FIXES
 	double m_localGameTimeBase;
+
+	// Hard deadline (realtime) by which a client inactivated on a level change must re-initiate
+	// its connection, or SV_CheckTimeouts force-drops it. Armed in SV_InactivateClients, cleared
+	// in SV_ConnectClient_internal. 0 = not armed. See sv_reconnect_timeout.
+	double m_reconnectDeadline;
 #endif
 public:
 	CGameClient(int id, client_t* cl);
@@ -267,10 +275,19 @@ public:
 	void NetchanClear() { m_NetChan.Clear(); }
 	FragStats_t &GetFragStats(int stream) { return m_NetChan.GetFragStats(stream); };
 
+	const movevars_t &GetMoveVars() const { return m_MoveVars; }
+	void SetMoveVars(const movevars_t &movevars) { m_MoveVars = movevars; }
+
+	// The game DLL changes them in PM_Move through playermove_t
+	movevars_t *GetMoveVarsForPlayerMove() { return &m_MoveVars; }
+
 #ifdef REHLDS_FIXES
 	void SetupLocalGameTime() { m_localGameTimeBase = g_psv.time; }
 	double GetLocalGameTime() const { return g_psv.time - m_localGameTimeBase; }
 	double GetLocalGameTimeBase() const { return m_localGameTimeBase; }
+
+	double GetReconnectDeadline() const { return m_reconnectDeadline; }
+	void SetReconnectDeadline(double time) { m_reconnectDeadline = time; }
 #endif
 };
 

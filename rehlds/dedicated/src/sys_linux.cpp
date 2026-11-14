@@ -324,7 +324,7 @@ static void ConsoleCtrlHandler(int signal)
 
 bool Sys_SetupConsole()
 {
-	struct sigaction action;
+	struct sigaction action = {};
 	action.sa_handler = ConsoleCtrlHandler;
 	sigaction(SIGINT, &action, NULL);
 	sigaction(SIGTERM, &action, NULL);

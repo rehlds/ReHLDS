@@ -9,10 +9,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Avoid -fPIC option
 set(CMAKE_SHARED_LIBRARY_CXX_FLAGS "")
 
-set(COMPILE_FLAGS "-m32 -U_FORTIFY_SOURCE")
+set(COMPILE_FLAGS "-m32 -U_FORTIFY_SOURCE -DFORTIFY_SOURCE=0")
 set(LINK_FLAGS "-m32")
 
-set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wall -fno-exceptions")
+set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wall -fno-exceptions -fno-strict-aliasing -fno-strict-overflow")
 
 if (DEBUG)
 	set(COMPILE_FLAGS "${COMPILE_FLAGS} -g3 -O3 -ggdb")
@@ -135,6 +135,8 @@ target_link_libraries(core PRIVATE
 if (NOT TARGET bzip2)
 	add_subdirectory(../../../dep/bzip2 lib)
 endif()
+
+set(LINK_FLAGS "${LINK_FLAGS} -Wl,-z,notext")
 
 set_target_properties(core PROPERTIES
 	OUTPUT_NAME core

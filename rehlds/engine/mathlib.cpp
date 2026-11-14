@@ -427,3 +427,15 @@ qboolean BoundsIntersect(const vec3_t mins1, const vec3_t maxs1, const vec3_t mi
 		return FALSE;
 	return TRUE;
 }
+
+// The first box reaches out of the second one on at least one axis
+qboolean BoundsExceed(const vec3_t mins1, const vec3_t maxs1, const vec3_t mins2, const vec3_t maxs2)
+{
+	for (int i = 0; i < 3; i++)
+	{
+		if (mins1[i] < mins2[i] || maxs1[i] > maxs2[i])
+			return TRUE;
+	}
+
+	return FALSE;
+}

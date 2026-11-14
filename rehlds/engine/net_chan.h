@@ -63,8 +63,11 @@ fragbuf_t *Netchan_AllocFragbuf(void);
 void Netchan_AddFragbufToTail(fragbufwaiting_t *wait, fragbuf_t *buf);
 void Netchan_CreateFragments_(qboolean server, netchan_t *chan, sizebuf_t *msg);
 void Netchan_CreateFragments(qboolean server, netchan_t *chan, sizebuf_t *msg);
-void Netchan_CreateFileFragmentsFromBuffer(qboolean server, netchan_t *chan, const char *filename, unsigned char *uncompressed_pbuf, int uncompressed_size);
+int Netchan_CreateFileFragmentsFromBuffer(qboolean server, netchan_t *chan, const char *filename, unsigned char *uncompressed_pbuf, int uncompressed_size);
 int Netchan_CreateFileFragments(qboolean server, netchan_t *chan, const char *filename);
+// TRUE if a transfer of this file is already queued or in flight on the file
+// stream, so a duplicate request must not queue it again (issue #1200).
+qboolean Netchan_IsFileTransferActive(netchan_t *chan, const char *filename);
 #ifdef REHLDS_FIXES
 int Netchan_CreateFileFragments_(qboolean server, netchan_t *chan, const char *filename);
 #endif // REHLDS_FIXES

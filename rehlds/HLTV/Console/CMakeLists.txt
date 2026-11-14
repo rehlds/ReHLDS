@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.1)
 project(hltv CXX)
 
+include(CheckCXXCompilerFlag)
+
 option(DEBUG "Build with debug information." OFF)
 
 set(CMAKE_CXX_STANDARD 14)
@@ -9,18 +11,28 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Avoid -rdynamic -fPIC options
 set(CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS "")
 
-set(COMPILE_FLAGS "-m32 -U_FORTIFY_SOURCE")
-set(LINK_FLAGS "-m32")
+set(COMPILE_FLAGS "-m32 -fno-pic -fno-pie -U_FORTIFY_SOURCE -DFORTIFY_SOURCE=0")
+set(LINK_FLAGS "-m32 -no-pie -Wl,--no-export-dynamic")
 
-set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wall -fno-exceptions")
+set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wall -fno-exceptions -fno-strict-aliasing -fno-strict-overflow")
+
+check_cxx_compiler_flag("-Wa,--execstack" HAS_EXECSTACK_ASM)
+check_cxx_compiler_flag("-Wl,-z,execstack" HAS_EXECSTACK_LINK)
+
+# Glibc >=2.41 fixes
+if(HAS_EXECSTACK_ASM)
+	set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wa,--execstack")
+endif()
+
+if(HAS_EXECSTACK_LINK)
+	set(LINK_FLAGS "${LINK_FLAGS} -Wl,-z,execstack")
+endif()
 
 if (DEBUG)
 	set(COMPILE_FLAGS "${COMPILE_FLAGS} -g3 -O3 -ggdb")
 else()
 	set(COMPILE_FLAGS "${COMPILE_FLAGS} -g0 -O3 -fno-stack-protector")
 endif()
-
-set(LINK_FLAGS "${LINK_FLAGS} -no-pie -Wl,--no-export-dynamic")
 
 # Check Intel C++ compiler
 if ("$ENV{CXX}" MATCHES "icpc")

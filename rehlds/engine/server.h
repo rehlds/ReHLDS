@@ -178,6 +178,11 @@ typedef struct client_frame_s
 	packet_entities_t entities;
 } client_frame_t;
 
+class CGameClient;
+
+// The room of the userinfo of a player
+const int MAX_CLIENT_INFO_STRING = MAX_INFO_STRING;
+
 typedef struct client_s
 {
 	qboolean active;
@@ -221,7 +226,7 @@ typedef struct client_s
 	char name[32];
 	int topcolor;
 	int bottomcolor;
-	int entityId;
+	CGameClient *pGameClient;	// the game client bound to this slot; the original layout keeps an unused field here (DONT YOU DARE TOUCH ME)
 	resource_t resourcesonhand;
 	resource_t resourcesneeded;
 	FileHandle_t upload;
@@ -236,7 +241,6 @@ typedef struct client_s
 	double m_lastvoicetime;
 	int m_sendrescount;
 	qboolean m_bSentNewResponse;
-	movevars_t movevars;
 } client_t;
 
 enum
@@ -374,6 +378,7 @@ extern cvar_t sv_rehlds_attachedentities_playeranimationspeed_fix;
 extern cvar_t sv_rehlds_local_gametime;
 extern cvar_t sv_rehlds_send_mapcycle;
 extern cvar_t sv_usercmd_custom_random_seed;
+extern cvar_t sv_rehlds_allow_large_sprays;
 #endif
 extern int sv_playermodel;
 
@@ -439,6 +444,7 @@ qboolean SV_IsPlayerIndex_wrapped(int index);
 void SV_ClearPacketEntities(client_frame_t *frame);
 void SV_AllocPacketEntities(client_frame_t *frame, int numents);
 void SV_ClearFrames(client_frame_t ** frames);
+void SV_ClearClient(client_t *cl);
 void SV_Serverinfo_f(void);
 void SV_Localinfo_f(void);
 void SV_User_f(void);
@@ -465,7 +471,7 @@ void SV_SendResources(sizebuf_t *msg);
 void SV_SendResources_internal(sizebuf_t *msg);
 void SV_WriteClientdataToMessage(client_t *client, sizebuf_t *msg);
 void SV_WriteSpawn(sizebuf_t *msg);
-void SV_SendUserReg(sizebuf_t *msg);
+void SV_SendUserReg(sizebuf_t *msg, UserMsg *pUserMsgs);
 void SV_New_f(void);
 void SV_SendRes_f(void);
 void SV_Spawn_f(void);
@@ -563,6 +569,9 @@ int SV_ModelIndex(const char *name);
 void SV_AddResource(resourcetype_t type, const char *name, int size, unsigned char flags, int index);
 void SV_AddResource_internal(resourcetype_t type, const char *name, int size, unsigned char flags, int index);
 size_t SV_CountResourceByType(resourcetype_t type, resource_t **pResourceList = nullptr, size_t nListMax = 0, size_t *nWidthFileNameMax = nullptr);
+#ifdef REHLDS_FIXES
+char *SV_TrimResourceLine(char *line);
+#endif
 void SV_CreateGenericResources(void);
 void SV_CreateResourceList(void);
 void SV_ClearCaches(void);
@@ -574,13 +583,14 @@ void SV_BroadcastCommand(char *fmt, ...);
 void SV_BuildReconnect(sizebuf_t *msg);
 NOXREF void SV_ReconnectAllClients(void);
 void SetCStrikeFlags(void);
+void SV_LinkUserMessages();
 void SV_ActivateServer(int runPhysics);
 void SV_ActivateServer_internal(int runPhysics);
 void SV_ServerShutdown(void);
 int SV_SpawnServer(qboolean bIsDemo, char *server, char *startspot);
 void SV_LoadEntities(void);
 void SV_ClearEntities(void);
-int RegUserMsg(const char *pszName, int iSize);
+int SV_RegUserMsg(const char *pszName, int iSize);
 qboolean StringToFilter(const char *s, ipfilter_t *f);
 USERID_t *SV_StringToUserID(const char *str);
 bool CanBeWrittenWithoutCIDR(const ipfilter_t &f);
@@ -600,6 +610,9 @@ void SV_InactivateClients(void);
 void SV_FailDownload(const char *filename);
 const char *Q_stristr(const char *pStr, const char *pSearch);
 qboolean IsSafeFileToDownload(const char *filename);
+#ifdef REHLDS_FIXES
+const char *SV_GetRequestedDownloadName(char *out, size_t outSize);
+#endif
 void SV_BeginFileDownload_f(void);
 void SV_SetMaxclients(void);
 void SV_HandleRconPacket(void);

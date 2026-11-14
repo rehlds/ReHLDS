@@ -42,6 +42,66 @@ private:
 
 extern CStringCommandsRateLimiter g_StringCommandsRateLimiter;
 
+class CDlFileRateLimiter {
+public:
+	CDlFileRateLimiter();
+	// Consumes one token for a dlfile request. Returns TRUE when the request
+	// must be dropped because the client's bucket is empty.
+	qboolean DlFileIssued(unsigned int clientId);
+	void ClientConnected(unsigned int clientId);
+
+private:
+	float GetBucketCapacity();
+	void CheckEmptyStrikes(unsigned int clientId);
+
+private:
+	float m_Tokens[MAX_CLIENTS];
+	double m_LastRefillTime[MAX_CLIENTS];
+	unsigned int m_EmptyStrikes[MAX_CLIENTS];
+};
+
+extern CDlFileRateLimiter g_DlFileRateLimiter;
+
+class CUserCmdTimeLimiter {
+public:
+	CUserCmdTimeLimiter();
+	void Frame();
+	bool CheckLimits(unsigned int clientId, usercmd_t *ucmd);
+	void ClientConnected(unsigned int clientId);
+
+private:
+
+	double TimeDifference(uint64_t start, uint64_t end) const;
+
+	enum TimeAbuseType {
+		ABUSE_NONE = -1,
+		ABUSE_SPEEDHACK,
+		ABUSE_SLOWMO,
+		ABUSE_MAX
+	};
+
+	struct usercmd_state_t {
+		// limits state
+		unsigned int ticksThisFrame;
+		unsigned int consecutiveNullCmds;
+
+		// time drift state
+		uint64_t msecTime;
+		uint64_t joinTime;
+		uint64_t lastUpdateTime;
+		double avgMsec;
+		double avgServerTime;
+		double accMsecStable;
+		uint64_t numFrames;
+		unsigned int lastTickTime;
+		unsigned int warnings[ABUSE_MAX];
+	};
+
+	usercmd_state_t m_States[MAX_CLIENTS];
+};
+
+extern CUserCmdTimeLimiter g_UserCmdTimeLimiter;
+
 extern void Rehlds_Security_Init();
 extern void Rehlds_Security_Shutdown();
 extern void Rehlds_Security_Frame();

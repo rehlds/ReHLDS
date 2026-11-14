@@ -173,6 +173,9 @@
     <ClCompile Include="..\unittests\common_tests.cpp">
       <Filter>unittests</Filter>
     </ClCompile>
+    <ClCompile Include="..\unittests\download_tests.cpp">
+      <Filter>unittests</Filter>
+    </ClCompile>
     <ClCompile Include="..\engine\net_ws.cpp">
       <Filter>engine\common</Filter>
     </ClCompile>
@@ -305,6 +308,9 @@
     <ClCompile Include="..\unittests\info_tests.cpp">
       <Filter>unittests</Filter>
     </ClCompile>
+    <ClCompile Include="..\unittests\messagemngr_tests.cpp">
+      <Filter>unittests</Filter>
+    </ClCompile>
     <ClCompile Include="..\unittests\rehlds_tests_shared.cpp">
       <Filter>unittests</Filter>
     </ClCompile>
@@ -342,6 +348,9 @@
       <Filter>testsuite</Filter>
     </ClCompile>
     <ClCompile Include="..\rehlds\rehlds_messagemngr_impl.cpp">
+      <Filter>rehlds</Filter>
+    </ClCompile>
+    <ClCompile Include="..\rehlds\rehlds_studio_impl.cpp">
       <Filter>rehlds</Filter>
     </ClCompile>
   </ItemGroup>
@@ -1067,6 +1076,12 @@
       <Filter>rehlds</Filter>
     </ClInclude>
     <ClInclude Include="..\public\rehlds\IMessageManager.h">
+      <Filter>public\rehlds</Filter>
+    </ClInclude>
+    <ClInclude Include="..\rehlds\rehlds_studio_impl.h">
+      <Filter>rehlds</Filter>
+    </ClInclude>
+    <ClInclude Include="..\public\rehlds\rehlds_studio.h">
       <Filter>public\rehlds</Filter>
     </ClInclude>
   </ItemGroup>

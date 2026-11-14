@@ -49,7 +49,10 @@ enum
 	AMBIENT_SOUND_NOT_LOOPING	= BIT(5)
 };
 
-extern unsigned char gMsgData[512];
+// The most a message written between MessageBegin and MessageEnd holds
+const int MAX_MSG_DATA = 512;
+
+extern unsigned char gMsgData[MAX_MSG_DATA];
 extern sizebuf_t gMsgBuffer;
 extern edict_t *gMsgEntity;
 extern int gMsgDest;

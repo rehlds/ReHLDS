@@ -34,7 +34,7 @@ public:
 	TokenLine(char *string);
 	virtual ~TokenLine();
 
-	char *GetRestOfLine(int i);			// returns all chars after token i
+	char *GetRestOfLine(int i);			// returns the line from token i onward
 	int CountToken();					// returns number of token
 	char *CheckToken(char *parm);		// returns token after token parm or ""
 	char *GetToken(int i);				// returns token i

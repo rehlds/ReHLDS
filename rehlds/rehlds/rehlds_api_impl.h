@@ -258,6 +258,10 @@ typedef IHookChainRegistryImpl<bool, edict_t*, edict_t*> CRehldsHookRegistry_SV_
 typedef IVoidHookChainImpl<sizebuf_t *> CRehldsHook_SV_SendResources;
 typedef IVoidHookChainRegistryImpl<sizebuf_t *> CRehldsHookRegistry_SV_SendResources;
 
+//SV_StudioSetupBones hook
+typedef IVoidHookChainImpl<model_t *, float, int, const vec_t *, const vec_t *, const unsigned char *, const unsigned char *, int, const edict_t *> CRehldsHook_SV_StudioSetupBones;
+typedef IVoidHookChainRegistryImpl<model_t *, float, int, const vec_t *, const vec_t *, const unsigned char *, const unsigned char *, int, const edict_t *> CRehldsHookRegistry_SV_StudioSetupBones;
+
 class CRehldsHookchains : public IRehldsHookchains {
 public:
 	CRehldsHookRegistry_Steam_NotifyClientConnect m_Steam_NotifyClientConnect;
@@ -316,6 +320,7 @@ public:
 	CRehldsHookRegistry_SV_ClientPrintf m_SV_ClientPrintf;
 	CRehldsHookRegistry_SV_AllowPhysent m_SV_AllowPhysent;
 	CRehldsHookRegistry_SV_SendResources m_SV_SendResources;
+	CRehldsHookRegistry_SV_StudioSetupBones m_SV_StudioSetupBones;
 
 public:
 	EXT_FUNC virtual IRehldsHookRegistry_Steam_NotifyClientConnect* Steam_NotifyClientConnect();
@@ -374,6 +379,7 @@ public:
 	EXT_FUNC virtual IRehldsHookRegistry_SV_ClientPrintf* SV_ClientPrintf();
 	EXT_FUNC virtual IRehldsHookRegistry_SV_AllowPhysent* SV_AllowPhysent();
 	EXT_FUNC virtual IRehldsHookRegistry_SV_SendResources* SV_SendResources();
+	EXT_FUNC virtual IRehldsHookRegistry_SV_StudioSetupBones* SV_StudioSetupBones();
 };
 
 extern CRehldsHookchains g_RehldsHookchains;
@@ -392,6 +398,7 @@ public:
 	virtual IRehldsServerData* GetServerData();
 	virtual IRehldsFlightRecorder* GetFlightRecorder();
 	virtual IMessageManager* GetMessageManager();
+	virtual IRehldsStudio* GetStudio();
 };
 
 extern sizebuf_t* GetNetMessage_api();

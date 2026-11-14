@@ -306,11 +306,21 @@ void EXT_FUNC Cvar_DirectSet_internal(struct cvar_s *var, const char *value)
 	Q_strcpy(var->string, pszValue);
 	var->value = (float)Q_atof(var->string);
 
+	if (changed)
+	{
+		for (cvarhook_t *pHook = cvar_hooks; pHook; pHook = pHook->next)
+		{
+			if (pHook->cvar == var)
+			{
+				pHook->hook(var);
+				break;
+			}
+		}
+
 #ifdef REHLDS_API
-	if (changed) {
 		Cvar_FireListeners(var->name, pszValue);
-	}
 #endif
+	}
 }
 
 void Cvar_DirectSet(struct cvar_s *var, const char *value)
@@ -321,7 +331,6 @@ void Cvar_DirectSet(struct cvar_s *var, const char *value)
 void Cvar_Set(const char *var_name, const char *value)
 {
 	cvar_t *var;
-	cvarhook_t *pHook;
 
 	var = Cvar_FindVar(var_name);
 	if (!var)
@@ -331,15 +340,6 @@ void Cvar_Set(const char *var_name, const char *value)
 	}
 
 	Cvar_DirectSet(var, value);
-
-	for (pHook = cvar_hooks; pHook; pHook = pHook->next)
-	{
-		if (pHook->cvar == var)
-		{
-			pHook->hook(var);
-			break;
-		}
-	}
 }
 
 void Cvar_SetValue(const char *var_name, float value)

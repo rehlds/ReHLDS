@@ -203,6 +203,16 @@ cvar_t sv_newunit = { "sv_newunit", "0", 0, 0.0f, NULL };
 
 cvar_t sv_clienttrace = { "sv_clienttrace", "1", FCVAR_SERVER, 0.0f, NULL };
 cvar_t sv_timeout = { "sv_timeout", "60", 0, 0.0f, NULL };
+#ifdef REHLDS_FIXES
+// Hard deadline (in seconds) for a client to complete a reconnect after a level change.
+// A client that SV_InactivateClients put into the reconnect-pending state but that never
+// re-initiates its connection within this window is force-dropped by SV_CheckTimeouts,
+// independent of the netchan inactivity timeout. This defeats the oxware "svc_stufftext
+// reconnect filter" phantom-slot exploit: the cheat blocks the engine's "reconnect" command
+// on changelevel and keeps the netchan warm, so the normal sv_timeout (which keys off
+// netchan.last_received) never fires and the half-connected slot survives forever. 0 = disabled.
+cvar_t sv_reconnect_timeout = { "sv_reconnect_timeout", "30", 0, 0.0f, NULL };
+#endif // REHLDS_FIXES
 cvar_t sv_failuretime = { "sv_failuretime", "0.5", 0, 0.0f, NULL };
 cvar_t sv_cheats = { "sv_cheats", "0", FCVAR_SERVER, 0.0f, NULL };
 cvar_t sv_password = { "sv_password", "", FCVAR_SERVER | FCVAR_PROTECTED, 0.0f, NULL };
@@ -255,6 +265,7 @@ cvar_t sv_rehlds_send_mapcycle = { "sv_rehlds_send_mapcycle", "0", 0, 0.0f, null
 cvar_t sv_rehlds_maxclients_from_single_ip = { "sv_rehlds_maxclients_from_single_ip", "5", 0, 5.0f, nullptr };
 cvar_t sv_use_entity_file = { "sv_use_entity_file", "0", 0, 0.0f, nullptr };
 cvar_t sv_usercmd_custom_random_seed = { "sv_usercmd_custom_random_seed", "0", 0, 0.0f, nullptr };
+cvar_t sv_rehlds_allow_large_sprays = { "sv_rehlds_allow_large_sprays", "1", 0, 1.0f, nullptr };
 #endif
 
 delta_t *SV_LookupDelta(char *name)
@@ -490,6 +501,18 @@ void SV_ClearFrames(client_frame_t **frames)
 	}
 }
 
+// Zeroes the slot for a new client; the slot stays bound to its game client, whose movement
+// variables start over with it
+void SV_ClearClient(client_t *cl)
+{
+	CGameClient *gameClient = cl->pGameClient;
+
+	Q_memset(cl, 0, sizeof(client_t));
+
+	cl->pGameClient = gameClient;
+	gameClient->SetMoveVars({});
+}
+
 void SV_Serverinfo_f(void)
 {
 	if (Cmd_Argc() == 1)
@@ -545,7 +568,7 @@ void SV_Localinfo_f(void)
 		return;
 	}
 
-	Info_SetValueForKey(localinfo, Cmd_Argv(1), Cmd_Argv(2), MAX_INFO_STRING * 128);
+	Info_SetValueForKey(localinfo, Cmd_Argv(1), Cmd_Argv(2), MAX_LOCALINFO);
 }
 
 void SV_User_f(void)
@@ -1198,7 +1221,7 @@ void SV_SendServerinfo_internal(sizebuf_t *msg, client_t *client)
 	client->spawned = FALSE;
 	client->connected = TRUE;
 	client->fully_connected = FALSE;
-	client->movevars = sv_movevars;
+	client->pGameClient->SetMoveVars(sv_movevars);
 }
 
 void SV_SendResources(sizebuf_t *msg)
@@ -1340,7 +1363,7 @@ void SV_WriteClientdataToMessage(client_t *client, sizebuf_t *msg)
 					[](float &globalGameTime)
 				{
 					if (globalGameTime > 0.0f)
-						globalGameTime -= (float)g_GameClients[host_client - g_psvs.clients]->GetLocalGameTimeBase();
+						globalGameTime -= (float)host_client->pGameClient->GetLocalGameTimeBase();
 				};
 				if (g_eGameType == GT_CStrike || g_eGameType == GT_CZero)
 					convertGlobalGameTimeToLocal(std::ref(tdata->m_fAimedDamage));
@@ -1430,7 +1453,7 @@ void SV_WriteSpawn(sizebuf_t *msg)
 #ifdef REHLDS_FIXES
 	if (sv_rehlds_local_gametime.value != 0.0f)
 	{
-		MSG_WriteFloat(msg, (float)g_GameClients[host_client - g_psvs.clients]->GetLocalGameTime());
+		MSG_WriteFloat(msg, (float)host_client->pGameClient->GetLocalGameTime());
 	}
 	else
 #endif
@@ -1471,7 +1494,12 @@ void SV_WriteSpawn(sizebuf_t *msg)
 	MSG_WriteByte(msg, svc_signonnum);
 	MSG_WriteByte(msg, 1);
 
+#ifdef REHLDS_FIXES
+	host_client->connecttime = realtime;
+#else
 	host_client->connecttime = 0.0;
+#endif
+
 	host_client->ignorecmdtime = 0.0;
 	host_client->cmdtime = 0.0;
 	host_client->active = TRUE;
@@ -1480,23 +1508,23 @@ void SV_WriteSpawn(sizebuf_t *msg)
 	host_client->fully_connected = FALSE;
 
 #ifdef REHLDS_FIXES
-	g_GameClients[host_client - g_psvs.clients]->SetSpawnedOnce(true);
+	host_client->pGameClient->SetSpawnedOnce(true);
 #endif // REHLDS_FIXES
 
 	NotifyDedicatedServerUI("UpdatePlayers");
 }
 
-void EXT_FUNC SV_SendUserReg(sizebuf_t *msg)
+void SV_SendUserReg(sizebuf_t *msg, UserMsg *pUserMsgs)
 {
-	for (UserMsg *pMsg = sv_gpNewUserMsgs; pMsg; pMsg = pMsg->next)
+	if (!pUserMsgs)
+		return;
+
+	for (UserMsg *pMsg = pUserMsgs; pMsg; pMsg = pMsg->next)
 	{
 		MSG_WriteByte(msg, svc_newusermsg);
 		MSG_WriteByte(msg, pMsg->iMsg);
 		MSG_WriteByte(msg, pMsg->iSize);
-		MSG_WriteLong(msg, *(int *)&pMsg->szName[0]);
-		MSG_WriteLong(msg, *(int *)&pMsg->szName[4]);
-		MSG_WriteLong(msg, *(int *)&pMsg->szName[8]);
-		MSG_WriteLong(msg, *(int *)&pMsg->szName[12]);
+		MSG_WriteBuf(msg, sizeof(pMsg->szName), pMsg->szName);
 	}
 }
 
@@ -1534,9 +1562,21 @@ void SV_New_f(void)
 	host_client->connected = TRUE;
 	host_client->connection_started = realtime;
 #ifdef REHLDS_FIXES
-	g_GameClients[host_client - g_psvs.clients]->SetupLocalGameTime();
+	host_client->pGameClient->SetupLocalGameTime();
+	// On a level change the client obeys "reconnect" by sending "new" over its existing
+	// netchan; it does not go through SV_ConnectClient. Reaching here proves the client
+	// honored the command, so disarm the deadline armed by SV_InactivateClients. Map
+	// loading, resource downloads and spawn must not count against sv_reconnect_timeout;
+	// from now on the regular sv_timeout applies.
+	host_client->pGameClient->SetReconnectDeadline(0.0);
 #endif
 	host_client->m_sendrescount = 0;
+
+#ifdef REHLDS_FIXES
+	// DoS hardening: refresh the dlfile token bucket, the client is about to
+	// request the resources it is missing on this map (issue #1200).
+	g_DlFileRateLimiter.ClientConnected(host_client - g_psvs.clients);
+#endif
 
 	SZ_Clear(&host_client->netchan.message);
 	SZ_Clear(&host_client->datagram);
@@ -1545,13 +1585,7 @@ void SV_New_f(void)
 
 	SV_SendServerinfo(&msg, host_client);
 
-	if (sv_gpUserMsgs)
-	{
-		UserMsg *pTemp = sv_gpNewUserMsgs;
-		sv_gpNewUserMsgs = sv_gpUserMsgs;
-		SV_SendUserReg(&msg);
-		sv_gpNewUserMsgs = pTemp;
-	}
+	SV_SendUserReg(&msg, sv_gpUserMsgs);
 	host_client->hasusrmsgs = TRUE;
 
 	// TODO: set userinfo to be sent?
@@ -2505,15 +2539,19 @@ void EXT_FUNC SV_ConnectClient_internal(void)
 	{
 		Con_DPrintf("Client %s connected\nAdr: %s\n", name, NET_AdrToString(host_client->netchan.remote_address));
 	}
-#ifndef REHLDS_OPT_PEDANTIC
+#if !defined(REHLDS_FIXES) && !defined(REHLDS_OPT_PEDANTIC)
 	Q_strncpy(host_client->hashedcdkey, cdkey, 32);
 	host_client->hashedcdkey[32] = '\0';
 #else
 	MD5Context_t ctx;
 	MD5Init(&ctx);
+#ifdef REHLDS_FIXES
+	MD5Update(&ctx, (unsigned char *)&host_client->network_userid.clientip, sizeof(unsigned int));
+#else
 	MD5Update(&ctx, (unsigned char *)cdkey, sizeof(cdkey));
+#endif // REHLDS_FIXES
 	MD5Final((unsigned char *)host_client->hashedcdkey, &ctx);
-#endif
+#endif // !defined(REHLDS_FIXES) && !defined(REHLDS_OPT_PEDANTIC)
 
 	host_client->active = FALSE;
 	host_client->spawned = FALSE;
@@ -2523,7 +2561,10 @@ void EXT_FUNC SV_ConnectClient_internal(void)
 
 #ifdef REHLDS_FIXES
 	host_client->m_bSentNewResponse = FALSE;
-	g_GameClients[host_client - g_psvs.clients]->SetSpawnedOnce(false);
+	host_client->pGameClient->SetSpawnedOnce(false);
+	// Client (re)established its connection, so it obeyed the level-change "reconnect" command.
+	// Disarm the deadline armed by SV_InactivateClients (an in-place reconnect clears it in SV_New_f).
+	host_client->pGameClient->SetReconnectDeadline(0.0);
 #endif // REHLDS_FIXES
 
 	bIsSecure = Steam_GSBSecure();
@@ -3974,6 +4015,19 @@ void SV_ReadPackets(void)
 	}
 }
 
+#ifdef REHLDS_FIXES
+// HLTV proxies only send "new" about 30 seconds after a level change, so the
+// default deadline would drop them on every map change. Give them a longer but
+// still bounded window.
+static float SV_GetReconnectTimeout(const client_t *cl)
+{
+	if (cl->proxy)
+		return Q_max(sv_reconnect_timeout.value * 3.0f, 90.0f);
+
+	return sv_reconnect_timeout.value;
+}
+#endif // REHLDS_FIXES
+
 void SV_CheckTimeouts(void)
 {
 	int i;
@@ -3988,6 +4042,29 @@ void SV_CheckTimeouts(void)
 			continue;
 		if (!cl->connected && !cl->active && !cl->spawned)
 			continue;
+#ifdef REHLDS_FIXES
+		// Force-drop a client that was inactivated on level change but never re-initiated its
+		// connection within sv_reconnect_timeout. This deadline is measured from the inactivation
+		// time (see SV_InactivateClients), NOT from netchan.last_received, so a cheat that keeps
+		// the netchan warm to block the "reconnect" command (oxware svc_stufftext filter ->
+		// phantom slot) cannot dodge it the way it dodges the normal sv_timeout.
+		double reconnectDeadline = cl->pGameClient->GetReconnectDeadline();
+		if (reconnectDeadline != 0.0)
+		{
+			if (cl->fully_connected)
+			{
+				// Reconnect finished normally; stand down.
+				cl->pGameClient->SetReconnectDeadline(0.0);
+			}
+			else if (sv_reconnect_timeout.value > 0.0 && (realtime - reconnectDeadline) > SV_GetReconnectTimeout(cl))
+			{
+				Con_DPrintf("Dropping %s: failed to reconnect within %.0fs after level change\n", cl->name, SV_GetReconnectTimeout(cl));
+				cl->pGameClient->SetReconnectDeadline(0.0);
+				SV_DropClient(cl, FALSE, "Failed to reconnect after level change");
+				continue;
+			}
+		}
+#endif // REHLDS_FIXES
 		if (cl->netchan.last_received < droptime)
 		{
 			SV_BroadcastPrintf("%s timed out\n", cl->name);
@@ -4052,7 +4129,7 @@ void EXT_FUNC SV_WriteFullClientUpdate_internal(IGameClient *client, char *info,
 {
 	client_t* cl = client->GetClient();
 
-#ifndef REHLDS_OPT_PEDANTIC
+#if !defined(REHLDS_FIXES) && !defined(REHLDS_OPT_PEDANTIC)
 	unsigned char digest[16];
 
 	MD5Context_t ctx;
@@ -4066,7 +4143,7 @@ void EXT_FUNC SV_WriteFullClientUpdate_internal(IGameClient *client, char *info,
 	MSG_WriteLong(sb, cl->userid);
 	MSG_WriteString(sb, info);
 
-#ifndef REHLDS_OPT_PEDANTIC
+#if !defined(REHLDS_FIXES) && !defined(REHLDS_OPT_PEDANTIC)
 	MSG_WriteBuf(sb, sizeof(digest), digest);
 #else
 	MSG_WriteBuf(sb, 16, cl->hashedcdkey);
@@ -5008,7 +5085,11 @@ qboolean SV_SendClientDatagram(client_t *client)
 #ifdef REHLDS_FIXES
 	if (sv_rehlds_local_gametime.value != 0.0f)
 	{
-		MSG_WriteFloat(&msg, (float)g_GameClients[client - g_psvs.clients]->GetLocalGameTime());
+		double localGameTime = client->pGameClient->GetLocalGameTime();
+		double localGameTimeBase = client->pGameClient->GetLocalGameTimeBase();
+		DELTA_SetTimeBaseOverride(localGameTime, localGameTimeBase);
+
+		MSG_WriteFloat(&msg, (float)localGameTime);
 	}
 	else
 #endif
@@ -5044,6 +5125,10 @@ qboolean SV_SendClientDatagram(client_t *client)
 	}
 
 	Netchan_Transmit(&client->netchan, msg.cursize, buf);
+
+#ifdef REHLDS_FIXES
+	DELTA_ClearTimeBaseOverride();
+#endif
 
 	return TRUE;
 }
@@ -5087,39 +5172,27 @@ void SV_UpdateToReliableMessages(void)
 			SV_UpdateUserInfo(client);
 		}
 
-		if (!client->fakeclient && (client->active || client->connected))
-		{
-			if (sv_gpNewUserMsgs != NULL)
-			{
-				SV_SendUserReg(&client->netchan.message);
-			}
-		}
+		// Never send a new user messages to bots
+		if (client->fakeclient)
+			continue;
+
+		if (!client->active && !client->connected)
+			continue;
+
+		// Send only new list of user messages
+		SV_SendUserReg(&client->netchan.message, sv_gpNewUserMsgs);
 	}
 
 	// Link new user messages to sent chain
-	if (sv_gpNewUserMsgs != NULL)
-	{
-		UserMsg *pMsg = sv_gpUserMsgs;
-		if (pMsg != NULL)
-		{
-			while (pMsg->next)
-			{
-				pMsg = pMsg->next;
-			}
-			pMsg->next = sv_gpNewUserMsgs;
-		}
-		else
-		{
-			sv_gpUserMsgs = sv_gpNewUserMsgs;
-		}
-		sv_gpNewUserMsgs = NULL;
-	}
+	SV_LinkUserMessages();
 
+	// Clear the server datagram if it overflowed
 	if (g_psv.datagram.flags & SIZEBUF_OVERFLOWED)
 	{
 		Con_DPrintf("sv.datagram overflowed!\n");
 		SZ_Clear(&g_psv.datagram);
 	}
+
 	if (g_psv.spectator.flags & SIZEBUF_OVERFLOWED)
 	{
 		Con_DPrintf("sv.spectator overflowed!\n");
@@ -5140,7 +5213,7 @@ void SV_UpdateToReliableMessages(void)
 		// Fix for the "server failed to transmit file 'AY&SY..." bug
 		// https://github.com/dreamstalker/rehlds/issues/38
 #ifdef REHLDS_FIXES
-		if (!(!client->fakeclient && (client->active || g_GameClients[i]->GetSpawnedOnce())))
+		if (!(!client->fakeclient && (client->active || client->pGameClient->GetSpawnedOnce())))
 			continue;
 
 		if (!svReliableCompressed && g_psv.reliable_datagram.cursize + client->netchan.message.cursize < client->netchan.message.maxsize)
@@ -5553,6 +5626,39 @@ void PrecacheMapSpecifiedResources()
 }
 #endif // REHLDS_FIXES
 
+#ifdef REHLDS_FIXES
+// Cleans up one .res line. NULL if it holds no resource.
+char *SV_TrimResourceLine(char *line)
+{
+	while (*line && (uint8_t)*line <= ' ')
+		line++;
+
+	// Comments start at a token boundary, so models//foo.mdl survives
+	for (char *p = line; p[0]; p++)
+	{
+		if (p[0] == '/' && p[1] == '/' && (p == line || (uint8_t)p[-1] <= ' '))
+		{
+			p[0] = '\0';
+			break;
+		}
+	}
+
+	size_t len = Q_strlen(line);
+
+	while (len > 0 && (uint8_t)line[len - 1] <= ' ')
+		len--;
+
+	if (len >= 2 && line[0] == '"' && line[len - 1] == '"')
+	{
+		line++;
+		len -= 2;
+	}
+
+	line[len] = '\0';
+	return len ? line : NULL;
+}
+#endif // REHLDS_FIXES
+
 void SV_CreateGenericResources(void)
 {
 	char filename[MAX_PATH];
@@ -5579,12 +5685,33 @@ void SV_CreateGenericResources(void)
 
 	while (1)
 	{
+#ifdef REHLDS_FIXES
+		// FIXED: .res is line-delimited; COM_Parse shattered spaced paths
+		char *nextData = COM_ParseLine(data);
+		char *resName = SV_TrimResourceLine(com_token);
+
+		if (!resName)
+		{
+			if (!nextData)
+				break;	// end of file
+
+			data = nextData;
+			continue;	// blank line or a comment
+		}
+
+		// Everything below reads com_token
+		if (resName != com_token)
+			Q_memmove(com_token, resName, Q_strlen(resName) + 1);
+
+		// NULL on the last line; the next pass breaks
+		data = nextData;
+
+		char *com_token_extension = Q_strrchr(com_token, '.');
+		bool successful = false;
+#else
 		data = COM_Parse(data);
 		if (Q_strlen(com_token) <= 0)
 			break;
-#ifdef REHLDS_FIXES
-		char *com_token_extension = Q_strrchr(com_token, '.');
-		bool successful = false;
 #endif
 
 		if (Q_strstr(com_token, ".."))
@@ -5638,6 +5765,10 @@ void SV_CreateGenericResources(void)
 		{
 			// In fixed version of PrecacheGeneric we don't need local copy
 #ifdef REHLDS_FIXES
+			// Advertised RES_FATALIFMISSING anyway; may live only on fastdl
+			if (!FS_FileExists(com_token))
+				Con_Printf("WARNING: resource '%s' from '%s' not found!\n", com_token, filename);
+
 			PF_precache_generic_I(com_token);
 			Con_DPrintf("  %s\n", com_token);
 			g_psv.num_generic_names++;
@@ -6118,6 +6249,29 @@ void MoveCheckedResourcesToFirstPositions()
 }
 #endif // REHLDS_FIXES
 
+// Moves pending new user messages to main list of sv_gpUserMsgs
+void SV_LinkUserMessages()
+{
+	if (!sv_gpNewUserMsgs)
+		return;
+
+	// Link new user messages to sent chain
+	UserMsg *pMsg = sv_gpUserMsgs;
+	if (pMsg)
+	{
+		while (pMsg->next)
+			pMsg = pMsg->next;
+
+		pMsg->next = sv_gpNewUserMsgs;
+	}
+	else
+	{
+		sv_gpUserMsgs = sv_gpNewUserMsgs;
+	}
+
+	sv_gpNewUserMsgs = NULL;
+}
+
 void SV_ActivateServer(int runPhysics)
 {
 	g_RehldsHookchains.m_SV_ActivateServer.callChain(SV_ActivateServer_internal, runPhysics);
@@ -6197,16 +6351,13 @@ void EXT_FUNC SV_ActivateServer_internal(int runPhysics)
 				Netchan_Transmit(&cl->netchan, 0, NULL);
 			}
 			else
-				SV_SendServerinfo(&msg, cl);
-
-			if (sv_gpUserMsgs)
 			{
-				pTemp = sv_gpNewUserMsgs;
-				sv_gpNewUserMsgs = sv_gpUserMsgs;
-				SV_SendUserReg(&msg);
-				sv_gpNewUserMsgs = pTemp;
+				SV_SendServerinfo(&msg, cl);
 			}
+
+			SV_SendUserReg(&msg, sv_gpUserMsgs);
 			cl->hasusrmsgs = TRUE;
+
 			Netchan_CreateFragments(TRUE, &cl->netchan, &msg);
 			Netchan_FragSend(&cl->netchan);
 			SZ_Clear(&msg);
@@ -6588,24 +6739,37 @@ void SV_ClearEntities(void)
 			ReleaseEntityDLLFields(pEdict);
 	}
 }
-int EXT_FUNC RegUserMsg(const char *pszName, int iSize)
+
+int EXT_FUNC SV_RegUserMsg(const char *pszName, int iSize)
 {
 	if (giNextUserMsg >= MAX_USERMESSAGES)
+	{
+		Con_Printf("%s: Not enough room to register message %s, limit: %i\n", __func__, pszName, MAX_USERMESSAGES);
 		return 0;
+	}
+
+	if (!pszName)
+		return 0;
+
+	if (Q_strlen(pszName) >= MAX_USERMESSAGES_LENGTH - 1)
+	{
+		Con_Printf("%s: Message name too long: %s\n", __func__, pszName);
+		return 0;
+	}
 
 	if (iSize > MAX_USER_MSG_DATA)
 		return 0;
 
-	if (!pszName || Q_strlen(pszName) >= MAX_USERMESSAGES_LENGTH - 1)
-		return 0;
-
-	UserMsg *pUserMsgs = sv_gpUserMsgs;
-	while (pUserMsgs)
+	for (UserMsg *pMsg = sv_gpUserMsgs; pMsg; pMsg = pMsg->next)
 	{
-		if (!Q_strcmp(pszName, pUserMsgs->szName))
-			return pUserMsgs->iMsg;
+		if (!Q_strcmp(pszName, pMsg->szName))
+			return pMsg->iMsg;
+	}
 
-		pUserMsgs = pUserMsgs->next;
+	for (UserMsg *pMsg = sv_gpNewUserMsgs; pMsg; pMsg = pMsg->next)
+	{
+		if (!Q_strcmp(pszName, pMsg->szName))
+			return pMsg->iMsg;
 	}
 
 	UserMsg *pNewMsg = (UserMsg *)Mem_ZeroMalloc(sizeof(UserMsg));
@@ -6659,6 +6823,26 @@ void FilterToString(const ipfilter_t &f, char *s)
 	else
 		Q_sprintf(s, "%i.%i.%i.%i/%i", b[0], b[1], b[2], b[3], f.cidr);
 }
+
+#ifdef REHLDS_FIXES
+static void SV_NotifyIPBanAdded(const ipfilter_t &f, float banTime)
+{
+	char strFilter[32];
+	char reason[32];
+
+	FilterToString(f, strFilter);
+
+	if (banTime == 0.0f)
+		Q_strcpy(reason, "permanently");
+	else
+		Q_snprintf(reason, sizeof(reason), "for %g minutes", banTime);
+
+	Con_Printf("Ban: \"%s\" was added to the IP ban list %s\n", strFilter, reason);
+
+	if (sv_logbans.value != 0.0f)
+		Log_Printf("Ban: \"%s\" was added to the IP ban list %s\n", strFilter, reason);
+}
+#endif // REHLDS_FIXES
 
 bool IsFilterIncludesAnotherFilter(const ipfilter_t &f, const ipfilter_t &f2)
 {
@@ -6976,6 +7160,10 @@ void SV_BanId_f(void)
 
 	if (!bKick)
 	{
+#ifdef REHLDS_FIXES
+		Con_Printf("Ban: \"<><%s><>\" was banned \"%s\" by \"%s\"\n", SV_GetIDString(id), szreason, pszCmdGiver);
+#endif // REHLDS_FIXES
+
 		if (sv_logbans.value != 0.0f)
 			Log_Printf("Ban: \"<><%s><>\" was banned \"%s\" by \"%s\"\n", SV_GetIDString(id), szreason, pszCmdGiver);
 
@@ -6995,6 +7183,12 @@ void SV_BanId_f(void)
 		if (SV_CompareUserID(&cl->network_userid, id))
 		{
 			host_client = cl;
+#ifdef REHLDS_FIXES
+			Con_Printf(
+				"Ban: \"%s<%i><%s><>\" was kicked and banned \"%s\" by \"%s\"\n",
+				host_client->name, host_client->userid, SV_GetClientIDString(host_client), szreason, pszCmdGiver
+				);
+#endif // REHLDS_FIXES
 			if (sv_logbans.value != 0.0f)
 			{
 				Log_Printf(
@@ -7415,6 +7609,7 @@ void SV_AddIP_f(void)
 			ipfilters[i].banEndTime = (banTime == 0.0f) ? 0.0f : banTime * 60.0f + realtime;
 #ifdef REHLDS_FIXES
 			ipfilters[i].cidr = tempFilter.cidr;
+			SV_NotifyIPBanAdded(ipfilters[i], banTime);
 #endif // REHLDS_FIXES
 			return;
 		}
@@ -7436,14 +7631,14 @@ void SV_AddIP_f(void)
 	ipfilters[i].mask = tempFilter.mask;
 #ifdef REHLDS_FIXES
 	ipfilters[i].cidr = tempFilter.cidr;
-#endif // REHLDS_FIXES
 
-#ifdef REHLDS_FIXES
 	char reason[32];
 	if (banTime == 0.0f)
 		Q_strcpy(reason, "permanently");
 	else
 		Q_sprintf(reason, "for %g minutes", banTime);
+
+	SV_NotifyIPBanAdded(ipfilters[i], banTime);
 #endif // REHLDS_FIXES
 
 	for (int i = 0; i < g_psvs.maxclients; i++)
@@ -7684,6 +7879,14 @@ void SV_InactivateClients(void)
 			cl->hasusrmsgs = FALSE;
 			cl->m_bSentNewResponse = FALSE;
 
+#ifdef REHLDS_FIXES
+			// Arm the reconnect deadline: this slot must re-initiate its connection
+			// (SV_New_f or SV_ConnectClient clears it) within sv_reconnect_timeout, or SV_CheckTimeouts
+			// force-drops it regardless of netchan activity. Closes the oxware changelevel
+			// phantom-slot exploit, where the cheat blocks "reconnect" and keeps the netchan warm.
+			cl->pGameClient->SetReconnectDeadline(realtime);
+#endif // REHLDS_FIXES
+
 			SZ_Clear(&cl->netchan.message);
 			SZ_Clear(&cl->datagram);
 
@@ -7826,20 +8029,91 @@ qboolean IsSafeFileToDownload(const char *filename)
 	return TRUE;
 }
 
+#ifdef REHLDS_FIXES
+// Cmd_Argv(1) ends the path at its first space. NULL rejects the request.
+const char *SV_GetRequestedDownloadName(char *out, size_t outSize)
+{
+	const char *args = Cmd_Args();
+
+	// A quoted path is already complete in argv(1)
+	if (!args || !args[0] || args[0] == '"')
+		return Cmd_Argv(1);
+
+	// cmd_args keeps everything past a client-embedded newline
+	size_t len = 0;
+	while (args[len] && args[len] != '\n' && args[len] != '\r')
+	{
+		if (++len >= outSize)
+			return NULL;	// no legitimate resource path is this long
+	}
+
+	while (len > 0 && (uint8_t)args[len - 1] <= ' ')
+		len--;
+
+	if (len == 0)
+		return NULL;
+
+	Q_memcpy(out, args, len);
+	out[len] = '\0';
+	return out;
+}
+#endif // REHLDS_FIXES
+
 void SV_BeginFileDownload_f(void)
 {
 	const char *name;
 	char szModuleC[13] = "!ModuleC.dll";
+#ifdef REHLDS_FIXES
+	char namebuf[MAX_PATH];
+#endif
 
-	if (Cmd_Argc() < 2 || cmd_source == src_command)
+	if (cmd_source == src_command)
 	{
 		return;
 	}
 
+	if (Cmd_Argc() < 2)
+	{
+		return;
+	}
+
+#ifdef REHLDS_FIXES
+	// FIXED: Rebuild resource paths that contain spaces
+	name = SV_GetRequestedDownloadName(namebuf, sizeof(namebuf));
+	if (!name)
+	{
+		SV_FailDownload(Cmd_Argv(1));
+		return;
+	}
+#else
 	name = Cmd_Argv(1);
+#endif
+
 	if (!name || !name[0] || (!Q_strncmp(name, szModuleC, 12) && g_psvs.isSecure))
 	{
 		return;
+	}
+
+#ifdef REHLDS_FIXES
+	// DoS hardening: every regular-file dlfile request costs a token from the
+	// client's bucket, duplicates included - deduplication below makes them
+	// cheap to serve, but the parse cost alone is enough to flood the main
+	// thread. A request that arrives with the bucket empty is dropped; a
+	// client that keeps hammering a dropped bucket gets kicked.
+	// Custom logo requests are not counted: they are bounded by the custom.hpk
+	// contents and keep accumulating over the whole session (issue #1200).
+	if (name[0] != '!' && g_DlFileRateLimiter.DlFileIssued(host_client - g_psvs.clients))
+	{
+		return;
+	}
+#endif
+
+	// DoS hardening: drop duplicate download requests before any validation
+	// work - filesystem lookups on every flooded request are what still burns
+	// CPU while a transfer is active (issue #1200).
+	if (Netchan_IsFileTransferActive(&host_client->netchan, name))
+	{
+		return;		// this file is already being transferred
 	}
 
 	if (!IsSafeFileToDownload(name) || sv_allow_download.value == 0.0f)
@@ -7883,8 +8157,10 @@ void SV_BeginFileDownload_f(void)
 #ifdef REHLDS_FIXES
 		if (pbuf && size)
 		{
-			Netchan_CreateFileFragmentsFromBuffer(TRUE, &host_client->netchan, name, pbuf, size);
-			Netchan_FragSend(&host_client->netchan);
+			if (!Netchan_CreateFileFragmentsFromBuffer(TRUE, &host_client->netchan, name, pbuf, size))
+				SV_FailDownload(name);
+			else
+				Netchan_FragSend(&host_client->netchan);
 		}
 		// Mem_Free pbuf even if size is zero
 		if (pbuf)
@@ -7894,8 +8170,10 @@ void SV_BeginFileDownload_f(void)
 #else // REHLDS_FIXES
 		if (pbuf && size)
 		{
-			Netchan_CreateFileFragmentsFromBuffer(TRUE, &host_client->netchan, name, pbuf, size);
-			Netchan_FragSend(&host_client->netchan);
+			if (!Netchan_CreateFileFragmentsFromBuffer(TRUE, &host_client->netchan, name, pbuf, size))
+				SV_FailDownload(name);
+			else
+				Netchan_FragSend(&host_client->netchan);
 			Mem_Free((void *)pbuf);
 		}
 #endif // REHLDS_FIXES
@@ -8279,6 +8557,9 @@ void SV_Init(void)
 	Cvar_RegisterVariable(&sv_skyvec_y);
 	Cvar_RegisterVariable(&sv_skyvec_z);
 	Cvar_RegisterVariable(&sv_timeout);
+#ifdef REHLDS_FIXES
+	Cvar_RegisterVariable(&sv_reconnect_timeout);
+#endif // REHLDS_FIXES
 	Cvar_RegisterVariable(&sv_clienttrace);
 	Cvar_RegisterVariable(&sv_zmax);
 	Cvar_RegisterVariable(&sv_wateramp);
@@ -8340,6 +8621,7 @@ void SV_Init(void)
 	Cvar_RegisterVariable(&sv_rollangle);
 	Cvar_RegisterVariable(&sv_use_entity_file);
 	Cvar_RegisterVariable(&sv_usercmd_custom_random_seed);
+	Cvar_RegisterVariable(&sv_rehlds_allow_large_sprays);
 #endif
 
 	//------------------------------------------------
@@ -8382,7 +8664,7 @@ void SV_Init(void)
 	{
 		client_t *cl = &g_psvs.clients[i];
 		SV_ClearFrames(&cl->frames);
-		Q_memset(cl, 0, sizeof(client_t));
+		SV_ClearClient(cl);
 		cl->resourcesonhand.pPrev = &cl->resourcesonhand;
 		cl->resourcesonhand.pNext = &cl->resourcesonhand;
 		cl->resourcesneeded.pPrev = &cl->resourcesneeded;

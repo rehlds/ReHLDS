@@ -591,6 +591,34 @@ void EXT_FUNC SV_StudioSetupBones(model_t *pModel, float frame, int sequence, co
 	}
 }
 
+void EXT_FUNC SV_StudioSetupBones_internal(model_t *pModel, float frame, int sequence, const vec_t *angles, const vec_t *origin, const unsigned char *pcontroller, const unsigned char *pblending, int iBone, const edict_t *edict)
+{
+	g_pSvBlendingAPI->SV_StudioSetupBones(pModel, frame, sequence, angles, origin, pcontroller, pblending, iBone, edict);
+}
+
+// The engine asks the blending interface of the game for bones only here, so that modules see every setup
+void SV_BlendingSetupBones(model_t *pModel, float frame, int sequence, const vec_t *angles, const vec_t *origin, const unsigned char *pcontroller, const unsigned char *pblending, int iBone, const edict_t *edict)
+{
+	g_RehldsHookchains.m_SV_StudioSetupBones.callChain(SV_StudioSetupBones_internal, pModel, frame, sequence, angles, origin, pcontroller, pblending, iBone, edict);
+}
+
+// The hitbox of the shield in the player models of CS
+int SV_StudioShieldHitbox()
+{
+#ifdef REHLDS_FIXES
+	return 20;
+#else
+	// NOTE: numhitboxes range [0,21], so index 21 it's unreachable code for loop
+	return 21;
+#endif
+}
+
+// Traces leave out the shield of a player of CS who doesn't carry one
+bool SV_StudioSkipsShield(const edict_t *pEdict)
+{
+	return pEdict->v.gamestate == 1 && (g_eGameType == GT_TerrorStrike || g_eGameType == GT_CStrike || g_eGameType == GT_CZero);
+}
+
 void SV_SetStudioHullPlane(mplane_t *pplane, int iBone, int k, float dist)
 {
 	pplane->type = 5;
@@ -627,14 +655,9 @@ hull_t *R_StudioHull(model_t *pModel, float frame, int sequence, const vec_t *an
 	pstudiohdr = (studiohdr_t *)Mod_Extradata(pModel);
 
 	vec_t angles2[3] = { -angles[0], angles[1], angles[2] };
-	g_pSvBlendingAPI->SV_StudioSetupBones(pModel, frame, sequence, angles2, origin, pcontroller, pblending, -1, pEdict);
+	SV_BlendingSetupBones(pModel, frame, sequence, angles2, origin, pcontroller, pblending, -1, pEdict);
 
-#ifdef REHLDS_FIXES
-	const int hitboxShieldIndex = 20;
-#else
-	// NOTE: numhitboxes range [0,21], so index 21 it's unreachable code for loop
-	const int hitboxShieldIndex = 21;
-#endif
+	const int hitboxShieldIndex = SV_StudioShieldHitbox();
 
 	mstudiobbox_t *pbbox = (mstudiobbox_t *)((char *)pstudiohdr + pstudiohdr->hitboxindex);
 	for (int i = 0; i < pstudiohdr->numhitboxes; i++)
@@ -731,6 +754,66 @@ void R_StudioPlayerBlend(mstudioseqdesc_t *pseqdesc, int *pBlend, float *pPitch)
 	}
 }
 
+// A trace takes a player in the pose its model is drawn in: the pitch goes into the blend, the controllers stay centred
+static void SV_StudioPlayerTracePose(const edict_t *pEdict, vec_t *angles, unsigned char *controller, unsigned char *blending)
+{
+	pstudiohdr = (studiohdr_t *)Mod_Extradata(g_psv.models[pEdict->v.modelindex]);
+
+	mstudioseqdesc_t* pseqdesc = (mstudioseqdesc_t *)((char*)pstudiohdr + pstudiohdr->seqindex);
+	pseqdesc += pEdict->v.sequence;
+
+	angles[0] = pEdict->v.angles[0];
+	angles[1] = pEdict->v.angles[1];
+	angles[2] = pEdict->v.angles[2];
+
+	int iBlend;
+	R_StudioPlayerBlend(pseqdesc, &iBlend, angles);
+
+	blending[0] = (unsigned char)iBlend;
+	blending[1] = 0;
+
+	controller[0] = controller[1] = controller[2] = controller[3] = 0x7F;
+}
+
+studiohdr_t *SV_StudioSetupTraceBones(const edict_t *pEdict)
+{
+	if (!pEdict || pEdict->free)
+		return NULL;
+
+	const int modelindex = pEdict->v.modelindex;
+	if (modelindex <= 0 || modelindex >= MAX_MODELS)
+		return NULL;
+
+	model_t *pModel = g_psv.models[modelindex];
+	if (!pModel || pModel->type != mod_studio)
+		return NULL;
+
+	studiohdr_t *pStudioHdr = (studiohdr_t *)Mod_Extradata(pModel);
+	if (!pStudioHdr || pEdict->v.sequence < 0 || pEdict->v.sequence >= pStudioHdr->numseq)
+		return NULL;
+
+	vec3_t angles;
+	unsigned char controller[4];
+	unsigned char blending[2];
+
+	if (pEdict->v.flags & FL_CLIENT)
+	{
+		SV_StudioPlayerTracePose(pEdict, angles, controller, blending);
+	}
+	else
+	{
+		VectorCopy(pEdict->v.angles, angles);
+		Q_memcpy(controller, pEdict->v.controller, sizeof(controller));
+		Q_memcpy(blending, pEdict->v.blending, sizeof(blending));
+	}
+
+	// The pitch goes to the bones the other way round, as in R_StudioHull
+	vec_t angles2[3] = { -angles[0], angles[1], angles[2] };
+	SV_BlendingSetupBones(pModel, pEdict->v.frame, pEdict->v.sequence, angles2, pEdict->v.origin, controller, blending, -1, pEdict);
+
+	return pStudioHdr;
+}
+
 hull_t *SV_HullForStudioModel(const edict_t *pEdict, const vec_t *mins, const vec_t *maxs, vec_t *offset, int *pNumHulls)
 {
 	qboolean useComplexHull = FALSE;
@@ -761,7 +844,7 @@ hull_t *SV_HullForStudioModel(const edict_t *pEdict, const vec_t *mins, const ve
 			}
 		}
 	}
-	if (pEdict->v.gamestate == 1 && (g_eGameType == GT_TerrorStrike || g_eGameType == GT_CStrike || g_eGameType == GT_CZero))
+	if (SV_StudioSkipsShield(pEdict))
 		bSkipShield = 1;
 
 	if ((g_psv.models[pEdict->v.modelindex]->flags & FL_ONGROUND) || useComplexHull == TRUE)
@@ -772,21 +855,11 @@ hull_t *SV_HullForStudioModel(const edict_t *pEdict, const vec_t *mins, const ve
 		offset[2] = 0;
 		if (pEdict->v.flags & FL_CLIENT)
 		{
-			pstudiohdr = (studiohdr_t *)Mod_Extradata(g_psv.models[pEdict->v.modelindex]);
-
-			mstudioseqdesc_t* pseqdesc = (mstudioseqdesc_t *)((char*)pstudiohdr + pstudiohdr->seqindex);
-			pseqdesc += pEdict->v.sequence;
-
 			vec3_t angles;
-			angles[0] = pEdict->v.angles[0];
-			angles[1] = pEdict->v.angles[1];
-			angles[2] = pEdict->v.angles[2];
+			unsigned char controller[4];
+			unsigned char blending[2];
+			SV_StudioPlayerTracePose(pEdict, angles, controller, blending);
 
-			int iBlend;
-			R_StudioPlayerBlend(pseqdesc, &iBlend, angles);
-
-			unsigned char blending[2] = { (unsigned char)iBlend, 0 };
-			unsigned char controller[4] = { 0x7F, 0x7F, 0x7F, 0x7F };
 			return R_StudioHull(
 				g_psv.models[pEdict->v.modelindex],
 				pEdict->v.frame,
@@ -890,7 +963,7 @@ void EXT_FUNC GetBonePosition(const edict_t *pEdict, int iBone, float *rgflOrigi
 		return; // invalid bone
 #endif
 
-	g_pSvBlendingAPI->SV_StudioSetupBones(
+	SV_BlendingSetupBones(
 		g_psv.models[pEdict->v.modelindex],
 		pEdict->v.frame,
 		pEdict->v.sequence,
@@ -932,7 +1005,7 @@ void EXT_FUNC GetAttachment(const edict_t *pEdict, int iAttachment, float *rgflO
 	angles[1] = pEdict->v.angles[1];
 	angles[2] = pEdict->v.angles[2];
 
-	g_pSvBlendingAPI->SV_StudioSetupBones(
+	SV_BlendingSetupBones(
 		g_psv.models[pEdict->v.modelindex],
 		pEdict->v.frame,
 		pEdict->v.sequence,

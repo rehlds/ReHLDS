@@ -34,11 +34,15 @@ CGameClient::CGameClient(int id, client_t* cl)
 	: m_NetChan(&cl->netchan)
 #ifdef REHLDS_FIXES
 	, m_localGameTimeBase(0)
+	, m_reconnectDeadline(0)
 #endif
 {
 	m_Id = id;
 	m_pClient = cl;
 	m_bSpawnedOnce = false;
+	SetMoveVars({});
+
+	cl->pGameClient = this;
 }
 
 int EXT_FUNC CGameClient::GetId()
@@ -686,11 +690,8 @@ void EXT_FUNC CRehldsServerData::SetResourcesNum(int num) {
 }
 
 struct resource_s *EXT_FUNC CRehldsServerData::GetResource(int index) {
-#ifdef REHLDS_FIXES
-	return &g_rehlds_sv.resources[index];
-#else // REHLDS_FIXES
-	return &g_psv.resourcelist[index];
-#endif // REHLDS_FIXES
+	resource_t *resources = SV_GetResourceList();
+	return &resources[index];
 }
 
 bool EXT_FUNC CRehldsServerData::IsActive()

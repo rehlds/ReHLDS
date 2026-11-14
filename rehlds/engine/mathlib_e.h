@@ -172,3 +172,4 @@ NOBODY void FloorDivMod(double numer, double denom, int *quotient, int *rem);
 NOBODY int GreatestCommonDivisor(int i1, int i2);
 NOBODY fixed16_t Invert24To16(fixed16_t val);
 qboolean BoundsIntersect(const vec3_t mins1, const vec3_t maxs1, const vec3_t mins2, const vec3_t maxs2);
+qboolean BoundsExceed(const vec3_t mins1, const vec3_t maxs1, const vec3_t mins2, const vec3_t maxs2);

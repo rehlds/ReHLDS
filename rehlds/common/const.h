@@ -31,6 +31,8 @@
 #define MULTIPLAYER_BACKUP			64
 // Same for single player
 #define SINGLEPLAYER_BACKUP			8
+// World entity always 0 index
+#define WORLD_ID					0
 //
 // Constants shared by the engine and dlls
 // This header file included by engine files and DLL files.
@@ -673,6 +675,11 @@
 #ifndef IN_BUTTONS_H
 #include "in_buttons.h"
 #endif
+
+// view angle update types for entvars_t::fixangle
+#define FIXANGLE_NONE				0
+#define FIXANGLE_ABSOLUTE			1
+#define FIXANGLE_RELATIVE			2
 
 // Break Model Defines
 

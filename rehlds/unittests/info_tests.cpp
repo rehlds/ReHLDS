@@ -96,6 +96,55 @@ TEST(SetValueForStarKey, Info, 1000) {
 }
 
 #ifdef REHLDS_FIXES
+TEST(SetValueForStarKeyPriority, Info, 1000) {
+	struct testdata_t {
+		const char* initialInfo;
+		const char* key;
+		const char* value;
+		const char* finalInfo;
+	};
+
+	testdata_t testdata[] = {
+		{ // the largest unknown key goes, game preferences stay
+			"\\name\\abcdefghijklmnopqrstuvwxyz012345678\\model\\urban\\_cl_autowepswitch\\0\\_ah\\0\\junk1\\012345678901234567890123456789012345678901234567890123456789\\junk2\\0123456789012345678901234567890123456789\\rate\\100000\\cl_updaterate\\101",
+			"*sid",
+			"0123456789012345678901234567890123456789",
+			"\\name\\abcdefghijklmnopqrstuvwxyz012345678\\model\\urban\\_cl_autowepswitch\\0\\_ah\\0\\junk2\\0123456789012345678901234567890123456789\\rate\\100000\\cl_updaterate\\101\\*sid\\0123456789012345678901234567890123456789",
+		},
+
+		{ // unknown keys are not enough, the low priority one goes next
+			"\\name\\abcdefghijklmnopqrstuvwxyz012345678\\model\\0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789\\_cl_autowepswitch\\0\\_ah\\0\\j\\1\\cl_updaterate\\101\\rate\\100000",
+			"*sid",
+			"01234567890123456789012345678901234567890123456789",
+			"\\name\\abcdefghijklmnopqrstuvwxyz012345678\\model\\0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789\\_cl_autowepswitch\\0\\cl_updaterate\\101\\rate\\100000\\*sid\\01234567890123456789012345678901234567890123456789",
+		},
+
+		{ // a low priority key takes room only from unknown keys
+			"\\name\\abcdefghijklmnopqrstuvwxyz012345678\\model\\0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789\\_cl_autowepswitch\\0\\junk\\0123456789\\cl_updaterate\\101\\rate\\100000\\topcolor\\01234567890123456789012345",
+			"_ah",
+			"0",
+			"\\name\\abcdefghijklmnopqrstuvwxyz012345678\\model\\0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789\\_cl_autowepswitch\\0\\cl_updaterate\\101\\rate\\100000\\topcolor\\01234567890123456789012345\\_ah\\0",
+		},
+
+		{ // a key of the client goes after keys of plugins, even the largest one
+			"\\name\\abcdefghijklmnopqrstuvwxyz012345678\\_pw\\0123456789012345678901234567890123456789012345678901234567890123456789\\junk1\\012345678901234567890123456789012345678901234\\model\\urban\\rate\\100000\\cl_updaterate\\101\\topcolor\\0123456789",
+			"*sid",
+			"01234567890123456789012345678901234567890123",
+			"\\name\\abcdefghijklmnopqrstuvwxyz012345678\\_pw\\0123456789012345678901234567890123456789012345678901234567890123456789\\model\\urban\\rate\\100000\\cl_updaterate\\101\\topcolor\\0123456789\\*sid\\01234567890123456789012345678901234567890123",
+		},
+	};
+
+	for (int i = 0; i < ARRAYSIZE(testdata); i++) {
+		testdata_t* d = &testdata[i];
+		char localInfo[257];
+		strcpy(localInfo, d->initialInfo);
+		Info_SetValueForStarKey(localInfo, d->key, d->value, 256);
+		int infoLen = strlen(localInfo);
+		CHECK("info string length", infoLen < 256);
+		ZSTR_EQUAL("Invalid info string", d->finalInfo, localInfo);
+	}
+}
+
 TEST(SetValueForStarKeyResult, Info, 1000) {
 	struct testdata_t {
 		const char* initialInfo;
@@ -305,4 +354,29 @@ TEST(Info_IsKeyImportant, Info, 1000)
 
 		CHECK("wrong result", d->result == result);
 	}
+}
+
+size_t Info_GetBufferSize_api(const char *infobuffer);
+bool Info_SetBufferValue_api(char *infobuffer, const char *key, const char *value);
+
+TEST(InfoBufferSize, Info, 1000)
+{
+	char userinfo[MAX_CLIENT_INFO_STRING] = "";
+
+	LONGS_EQUAL("localinfo", MAX_LOCALINFO, Info_GetBufferSize_api(localinfo));
+	LONGS_EQUAL("serverinfo", MAX_INFO_STRING, Info_GetBufferSize_api(Info_Serverinfo()));
+	LONGS_EQUAL("userinfo", MAX_CLIENT_INFO_STRING, Info_GetBufferSize_api(userinfo));
+}
+
+TEST(InfoBufferSetValue, Info, 1000)
+{
+	char userinfo[MAX_CLIENT_INFO_STRING] = "\\name\\player";
+
+	CHECK("key set", Info_SetBufferValue_api(userinfo, "model", "urban"));
+	CHECK("star key set", Info_SetBufferValue_api(userinfo, "*sid", "12345"));
+	ZSTR_EQUAL("keys in the buffer", "\\name\\player\\model\\urban\\*sid\\12345", userinfo);
+
+	CHECK("key with a slash refused", !Info_SetBufferValue_api(userinfo, "bad\\key", "1"));
+	CHECK("key removed by an empty value", Info_SetBufferValue_api(userinfo, "model", ""));
+	ZSTR_EQUAL("key removed", "\\name\\player\\*sid\\12345", userinfo);
 }

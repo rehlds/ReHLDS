@@ -30,10 +30,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_SHARED_LIBRARY_CXX_FLAGS "")
 set(CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS "")
 
-set(COMPILE_FLAGS "-m32 -U_FORTIFY_SOURCE")
+set(COMPILE_FLAGS "-m32 -U_FORTIFY_SOURCE -DFORTIFY_SOURCE=0")
 set(LINK_FLAGS "-m32")
 
-set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wall -fno-rtti -fno-exceptions")
+set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wall -fno-rtti -fno-exceptions -fno-strict-aliasing -fno-strict-overflow")
 
 # Remove noxref code and data
 set(COMPILE_FLAGS "${COMPILE_FLAGS} -ffunction-sections -fdata-sections")
@@ -183,6 +183,7 @@ set(ENGINE_SRCS
 	rehlds/rehlds_api_impl.cpp
 	rehlds/rehlds_interfaces_impl.cpp
 	rehlds/rehlds_messagemngr_impl.cpp
+	rehlds/rehlds_studio_impl.cpp
 	rehlds/rehlds_security.cpp
 )
 
@@ -190,8 +191,10 @@ set(UNITTESTS_SRCS
 	unittests/common_tests.cpp
 	unittests/crc32c_tests.cpp
 	unittests/delta_tests.cpp
+	unittests/download_tests.cpp
 	unittests/info_tests.cpp
 	unittests/mathlib_tests.cpp
+	unittests/messagemngr_tests.cpp
 	unittests/rehlds_tests_shared.cpp
 	unittests/rehlds_tests_shared.h
 	unittests/security_tests.cpp
@@ -219,7 +222,6 @@ if (CMAKE_BUILD_TYPE MATCHES Unittests)
 		add_subdirectory(../dep/cppunitlite cppunitlite)
 	endif()
 
-	set(LINK_FLAGS "${LINK_FLAGS} -no-pie -Wl,--no-export-dynamic")
 	add_executable(engine ${appversion.sh} ${ENGINE_SRCS})
 	target_link_libraries(engine PRIVATE cppunitlite)
 else()
@@ -293,6 +295,8 @@ endif()
 set(LINK_FLAGS "${LINK_FLAGS} \
 	-Wl,-rpath,'$ORIGIN/.' \
 	-L${PROJECT_SOURCE_DIR}/lib/linux32")
+
+set(LINK_FLAGS "${LINK_FLAGS} -Wl,-z,notext")
 
 set_target_properties(engine PROPERTIES
 	OUTPUT_NAME engine_i486

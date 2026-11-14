@@ -740,13 +740,26 @@ qboolean Draw_ValidateCustomLogo(cachewad_t *wad, unsigned char *data, lumpinfo_
 	for (i = 0; i < MIPLEVELS; i++)
 		tex.offsets[i] = wad->cacheExtra + LittleLong(tmp.offsets[i]);
 
+#ifdef REHLDS_FIXES
+	// 256 is hlds default, however sprays normally are always 64
+	unsigned int tex_maxbounds = (sv_rehlds_allow_large_sprays.value ? 256 : 64);
+
+	if (tex.width <= 0  || tex.height <= 0 ||
+		// Check if texture dimensions exceed limits
+		tex.width > tex_maxbounds || tex.height > tex_maxbounds)
+	{
+		Con_DPrintf("%s: Bad cached wad tex size %ux%u on %s\n", __func__, tex.width, tex.height, wad->name);
+		return FALSE;
+	}
+#else
 	if (tex.width <= 0  || tex.height <= 0 ||
 		// Check if texture dimensions exceed limits
 		tex.width > 256 || tex.height > 256)
 	{
-		Con_Printf("%s: Bad cached wad tex size  %ux%u on %s\n", __func__, tex.width, tex.height, wad->name);
+		Con_Printf("%s: Bad cached wad tex size %ux%u on %s\n", __func__, tex.width, tex.height, wad->name);
 		return FALSE;
 	}
+#endif
 
 	pix = tex.width * tex.height;
 	size = pix + (pix >> 2) + (pix >> 4) + (pix >> 6);
