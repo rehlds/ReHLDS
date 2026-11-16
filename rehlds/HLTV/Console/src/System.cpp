@@ -349,6 +349,7 @@ System::LocalCommandID_s System::m_LocalCmdReg[] = {
 	{ "title",         CMD_ID_TITLE,         &System::CMD_Title },
 	{ "showcon",       CMD_ID_SHOWCON,       &System::CMD_ShowCon },
 	{ "echo",          CMD_ID_ECHO,          &System::CMD_Echo },
+	{ "version",       CMD_ID_VERSION,       &System::CMD_Version },
 };
 
 bool System::Init(IBaseSystem *system, int serial, char *name)
@@ -669,7 +670,14 @@ void System::CMD_Title(char *cmdLine)
 		return;
 	}
 
-	m_Console.SetTitle(params.GetToken(1));
+	SetTitle(params.GetToken(1));
+}
+
+void System::CMD_Version(char *cmdLine)
+{
+	Printf("ReHLTV version: " APP_VERSION "\n");
+	Printf("Build date: " __TIME__ " " __DATE__ "\n");
+	Printf("Build from: " APP_COMMIT_URL APP_COMMIT_SHA "\n");
 }
 
 void System::CMD_Echo(char *cmdLine)
@@ -1010,7 +1018,10 @@ void System::ExecuteCommand(int commandID, char *commandLine)
 
 void System::SetTitle(char *text)
 {
-	m_Console.SetTitle(text);
+	// "[ReHLTV <version>] <title>", like the "[ReHLDS <version>]" title of the hlds console window
+	char buffer[256];
+	Q_snprintf(buffer, sizeof(buffer), "[ReHLTV " APP_VERSION "] %s", text ? text : "");
+	m_Console.SetTitle(buffer);
 }
 
 bool System::InitVGUI(IVGuiModule *module)
