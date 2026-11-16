@@ -681,7 +681,7 @@ void System::CMD_Version(char *cmdLine)
 	Printf("Build from: " APP_COMMIT_URL APP_COMMIT_SHA "\n");
 
 	char szSteamInfo[2560];
-	SteamApiCompat::Describe(szSteamInfo, sizeof(szSteamInfo));
+	SteamApiCompat::Describe(szSteamInfo, sizeof(szSteamInfo), CheckParam("-debug") != nullptr);
 	Printf("%s", szSteamInfo);
 }
 

@@ -169,21 +169,7 @@ namespace SteamApiCompat
 		::SteamGameServer_Shutdown();
 	}
 
-	// Which of the two steam_api builds HLDS ships is loaded, told apart by their exports.
-	inline const char *ApiKind()
-	{
-		Entries &api = Get();
-		if (api.legacyGameServerInit)
-			return "legacy (Steamworks SDK 1.22/1.23a, HLDS up to 8684)";
-
-		if (api.internalGameServerInit)
-			return "HL25 (Steamworks SDK 1.53a/1.57, HLDS 9890 and later)";
-
-		return "unknown";
-	}
-
-	// Full path of a module loaded into this process, for diagnostics.
-	// Windows: by module name. Linux: from /proc/self/maps, by file name.
+	// Full path of a module loaded into this process. Windows: by module name. Linux: from /proc/self/maps, by file name.
 	inline bool LoadedModulePath(const char *name, char *pszOut, size_t outSize)
 	{
 		if (!outSize)
@@ -222,22 +208,111 @@ namespace SteamApiCompat
 #endif
 	}
 
-	// "Steam API: <kind>, <path>" and "Steam client: <path>" lines for the startup log and the version command.
-	// The steamclient path shows at once whether the server took the local one or the one of an installed Steam client.
-	inline void Describe(char *pszOut, size_t outSize)
+	inline long FileSize(const char *path)
+	{
+		FILE *fp = fopen(path, "rb");
+		if (!fp)
+			return -1;
+
+		fseek(fp, 0, SEEK_END);
+		long size = ftell(fp);
+		fclose(fp);
+		return size;
+	}
+
+	// steam_api has no version export or usable version resource, but Valve shipped exactly these builds with HLDS
+	// (checked against all HLDS builds since Feb 2013 and the Steamworks SDK archives); they differ in size.
+	inline const char *KnownApiVersion(long size)
+	{
+#ifdef _WIN32
+		switch (size)
+		{
+		case 103920: return "Steamworks SDK 1.22 (HLDS up to 8684)";
+		case 104872: return "Steamworks SDK 1.23a";
+		case 263080: return "Steamworks SDK 1.53a (HLDS 9890 and later)";
+		}
+#else
+		switch (size)
+		{
+		case 76032:  return "Steamworks SDK 1.23a, HLDS build (HLDS up to 8684)";
+		case 375272: return "Steamworks SDK 1.57 (HLDS 9890 and later)";
+		}
+#endif
+		return nullptr;
+	}
+
+	// Directory of the main executable, to tell "loaded from the server folder" from anything else.
+	inline bool ExeDir(char *pszOut, size_t outSize)
+	{
+#ifdef _WIN32
+		DWORD len = GetModuleFileNameA(nullptr, pszOut, (DWORD)outSize);
+		if (!len || len >= outSize)
+			return false;
+#else
+		ssize_t len = readlink("/proc/self/exe", pszOut, outSize - 1);
+		if (len <= 0)
+			return false;
+
+		pszOut[len] = '\0';
+#endif
+		char *slash = strrchr(pszOut, '/');
+#ifdef _WIN32
+		char *bslash = strrchr(pszOut, '\\');
+		if (!slash || (bslash && bslash > slash))
+			slash = bslash;
+#endif
+		if (!slash)
+			return false;
+
+		*slash = '\0';
+		return true;
+	}
+
+	inline bool InDir(const char *path, const char *dir)
+	{
+		size_t len = strlen(dir);
+#ifdef _WIN32
+		return !_strnicmp(path, dir, len) && (path[len] == '\\' || path[len] == '/');
+#else
+		return !strncmp(path, dir, len) && path[len] == '/';
+#endif
+	}
+
+	// Lines for the startup log and the version command:
+	//   Steam API: <Steamworks SDK version of the loaded steam_api>[, <path>]
+	//   Steam client: <server folder | path when it is not the server's own>
+	// fullPaths (-debug): always print both paths.
+	inline void Describe(char *pszOut, size_t outSize, bool fullPaths)
 	{
 #ifdef _WIN32
 		const char *apiName = "steam_api.dll", *clientName = "steamclient.dll";
 #else
 		const char *apiName = "libsteam_api.so", *clientName = "steamclient.so";
 #endif
-		char apiPath[1024], clientPath[1024];
-		if (!LoadedModulePath(apiName, apiPath, sizeof(apiPath)))
-			strcpy(apiPath, "not loaded");
+		char apiPath[1024], clientPath[1024], exeDir[1024], apiVersion[128], clientWhere[1100];
+		bool haveApi = LoadedModulePath(apiName, apiPath, sizeof(apiPath));
+		bool haveClient = LoadedModulePath(clientName, clientPath, sizeof(clientPath));
+		bool haveExeDir = ExeDir(exeDir, sizeof(exeDir));
 
-		if (!LoadedModulePath(clientName, clientPath, sizeof(clientPath)))
-			strcpy(clientPath, "not loaded yet");
+		const char *known = haveApi ? KnownApiVersion(FileSize(apiPath)) : nullptr;
+		if (!haveApi)
+			snprintf(apiVersion, sizeof(apiVersion), "not loaded");
+		else if (known)
+			snprintf(apiVersion, sizeof(apiVersion), "%s", known);
+		else
+			snprintf(apiVersion, sizeof(apiVersion), "unrecognized %s (%ld bytes, %s entry points)", apiName, FileSize(apiPath),
+				Get().legacyGameServerInit ? "legacy" : (Get().internalGameServerInit ? "SteamInternal" : "no known"));
 
-		snprintf(pszOut, outSize, "Steam API: %s, %s\nSteam client: %s\n", ApiKind(), apiPath, clientPath);
+		if (!haveClient)
+			snprintf(clientWhere, sizeof(clientWhere), "not loaded yet");
+		else if (!fullPaths && haveExeDir && InDir(clientPath, exeDir))
+			snprintf(clientWhere, sizeof(clientWhere), "server folder");
+		else
+			snprintf(clientWhere, sizeof(clientWhere), "%s", clientPath);
+
+		if (fullPaths && haveApi)
+			snprintf(pszOut, outSize, "Steam API: %s, %s\nSteam client: %s\n", apiVersion, apiPath, clientWhere);
+		else
+			snprintf(pszOut, outSize, "Steam API: %s\nSteam client: %s\n", apiVersion, clientWhere);
 	}
 }

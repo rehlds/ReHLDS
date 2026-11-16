@@ -302,7 +302,7 @@ void CSteam3Server::Activate()
 			Sys_Error("Unable to initialize Steam.");
 
 		char szSteamInfo[2560];
-		SteamApiCompat::Describe(szSteamInfo, sizeof(szSteamInfo));
+		SteamApiCompat::Describe(szSteamInfo, sizeof(szSteamInfo), COM_CheckParm("-debug") != 0);
 		Con_Printf("%s", szSteamInfo);
 
 		CRehldsPlatformHolder::get()->SteamGameServer()->SetProduct(gpszProductString);

@@ -135,7 +135,7 @@ void Master::RunFrame(double time)
 				if (SteamApiCompat::GameServer_Init(ntohl(*(u_long *)&netAdr->m_IP[0]), 0, 0, 0xFFFFu, eServerModeNoAuthentication, MASTER_VERSION))
 				{
 					char szSteamInfo[2560];
-					SteamApiCompat::Describe(szSteamInfo, sizeof(szSteamInfo));
+					SteamApiCompat::Describe(szSteamInfo, sizeof(szSteamInfo), m_System->CheckParam("-debug") != nullptr);
 					m_System->Printf("%s", szSteamInfo);
 
 					SteamApiCompat::GameServer()->SetProduct("hltv");
