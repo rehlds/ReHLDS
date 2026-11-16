@@ -156,7 +156,9 @@ void CSteam3Server::OnGSClientDenyHelper(client_t *cl, EDenyReason eDenyReason, 
 		break;
 
 	case k_EDenySteamValidationStalled:
-		if (m_bLanOnly)
+		if (!m_bLanOnly)
+			SV_DropClient(cl, 0, "STEAM verification failed");
+		else
 			cl->network_userid.m_SteamID = 1;
 		break;
 
@@ -171,6 +173,12 @@ void CSteam3Server::OnGSClientApprove(GSClientApprove_t *pGSClientSteam2Accept)
 	client_t* cl = ClientFindFromSteamID(pGSClientSteam2Accept->m_SteamID);
 	if (!cl)
 		return;
+
+	cl->network_userid.m_SteamIDValidated = pGSClientSteam2Accept->m_SteamID.ConvertToUint64();
+	host_client->network_userid.m_SteamIDValidated = pGSClientSteam2Accept->m_SteamID.ConvertToUint64();
+
+	Info_SetValueForStarKey(cl->userinfo, "*sid", va("%lld", cl->network_userid.m_SteamIDValidated), MAX_INFO_STRING);
+	Info_SetValueForStarKey(host_client->userinfo, "*sid", va("%lld", host_client->network_userid.m_SteamIDValidated), MAX_INFO_STRING);
 
 	if (SV_FilterUser(&cl->network_userid))
 	{
