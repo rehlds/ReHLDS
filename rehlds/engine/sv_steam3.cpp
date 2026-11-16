@@ -336,10 +336,10 @@ void CSteam3Server::Shutdown()
 {
 	if (m_bLoggedOn)
 	{
-		SteamGameServer()->EnableHeartbeats(0);
-		SteamGameServer()->LogOff();
+		CRehldsPlatformHolder::get()->SteamGameServer()->EnableHeartbeats(0);
+		CRehldsPlatformHolder::get()->SteamGameServer()->LogOff();
 
-		SteamGameServer_Shutdown();
+		CRehldsPlatformHolder::get()->SteamGameServer_Shutdown();
 		m_bLoggedOn = false;
 	}
 }
