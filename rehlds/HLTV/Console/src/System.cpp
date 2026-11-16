@@ -27,6 +27,7 @@
 */
 
 #include "precompiled.h"
+#include "SteamApiCompat.h"
 
 System gSystem;
 
@@ -678,6 +679,10 @@ void System::CMD_Version(char *cmdLine)
 	Printf("ReHLTV version: " APP_VERSION "\n");
 	Printf("Build date: " __TIME__ " " __DATE__ "\n");
 	Printf("Build from: " APP_COMMIT_URL APP_COMMIT_SHA "\n");
+
+	char szSteamInfo[2560];
+	SteamApiCompat::Describe(szSteamInfo, sizeof(szSteamInfo));
+	Printf("%s", szSteamInfo);
 }
 
 void System::CMD_Echo(char *cmdLine)

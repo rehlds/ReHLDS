@@ -27,6 +27,7 @@
 #include <dlfcn.h>
 #endif
 
+#include <stdio.h>
 #include <string.h>
 
 namespace SteamApiCompat
@@ -166,5 +167,77 @@ namespace SteamApiCompat
 	{
 		CachedGameServer() = nullptr;
 		::SteamGameServer_Shutdown();
+	}
+
+	// Which of the two steam_api builds HLDS ships is loaded, told apart by their exports.
+	inline const char *ApiKind()
+	{
+		Entries &api = Get();
+		if (api.legacyGameServerInit)
+			return "legacy (Steamworks SDK 1.22/1.23a, HLDS up to 8684)";
+
+		if (api.internalGameServerInit)
+			return "HL25 (Steamworks SDK 1.53a/1.57, HLDS 9890 and later)";
+
+		return "unknown";
+	}
+
+	// Full path of a module loaded into this process, for diagnostics.
+	// Windows: by module name. Linux: from /proc/self/maps, by file name.
+	inline bool LoadedModulePath(const char *name, char *pszOut, size_t outSize)
+	{
+		if (!outSize)
+			return false;
+
+		pszOut[0] = '\0';
+#ifdef _WIN32
+		HMODULE hModule = GetModuleHandleA(name);
+		return hModule && GetModuleFileNameA(hModule, pszOut, (DWORD)outSize) > 0;
+#else
+		FILE *fp = fopen("/proc/self/maps", "r");
+		if (!fp)
+			return false;
+
+		char line[1024];
+		size_t nameLen = strlen(name);
+		bool found = false;
+		while (!found && fgets(line, sizeof(line), fp))
+		{
+			char *path = strchr(line, '/');
+			if (!path)
+				continue;
+
+			path[strcspn(path, "\n")] = '\0';
+			size_t len = strlen(path);
+			if (len > nameLen && path[len - nameLen - 1] == '/' && !strcmp(path + len - nameLen, name))
+			{
+				strncpy(pszOut, path, outSize - 1);
+				pszOut[outSize - 1] = '\0';
+				found = true;
+			}
+		}
+
+		fclose(fp);
+		return found;
+#endif
+	}
+
+	// "Steam API: <kind>, <path>" and "Steam client: <path>" lines for the startup log and the version command.
+	// The steamclient path shows at once whether the server took the local one or the one of an installed Steam client.
+	inline void Describe(char *pszOut, size_t outSize)
+	{
+#ifdef _WIN32
+		const char *apiName = "steam_api.dll", *clientName = "steamclient.dll";
+#else
+		const char *apiName = "libsteam_api.so", *clientName = "steamclient.so";
+#endif
+		char apiPath[1024], clientPath[1024];
+		if (!LoadedModulePath(apiName, apiPath, sizeof(apiPath)))
+			strcpy(apiPath, "not loaded");
+
+		if (!LoadedModulePath(clientName, clientPath, sizeof(clientPath)))
+			strcpy(clientPath, "not loaded yet");
+
+		snprintf(pszOut, outSize, "Steam API: %s, %s\nSteam client: %s\n", ApiKind(), apiPath, clientPath);
 	}
 }

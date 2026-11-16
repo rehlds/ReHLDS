@@ -27,6 +27,7 @@
 */
 
 #include "precompiled.h"
+#include "SteamApiCompat.h"
 
 typedef int(*SV_BLENDING_INTERFACE_FUNC)(int, struct sv_blending_interface_s **, struct server_studio_api_s *, float *, float *);
 
@@ -2473,6 +2474,10 @@ void Host_Version_f(void)
 	Con_Printf("ReHLDS version: " APP_VERSION "\n");
 	Con_Printf("Build date: " __BUILD_TIME__ " " __BUILD_DATE__ " (%i)\n", build_number());
 	Con_Printf("Build from: " APP_COMMIT_URL APP_COMMIT_SHA "\n");
+
+	char szSteamInfo[2560];
+	SteamApiCompat::Describe(szSteamInfo, sizeof(szSteamInfo));
+	Con_Printf("%s", szSteamInfo);
 #else
 	Con_Printf("Exe build: " __BUILD_TIME__ " " __BUILD_DATE__ " (%i)\n", build_number());
 #endif
