@@ -243,6 +243,37 @@ void Sys_WriteProcessIdFile()
 	;
 }
 
+// Load steamclient.dll from the server folder before the engine initializes Steam.
+// Without this, steam_api may take the steamclient.dll of an installed Steam client from
+// HKCU\Software\Valve\Steam\ActiveProcess\SteamClientDll (the value stays there after Steam exits).
+// A current Steam client's 32-bit steamclient.dll needs SDL3.dll, which is not next to hlds.exe,
+// so the server fails with "Unable to initialize Steam". Disable with -nolocalsteamclient.
+void Sys_PreloadSteamClient()
+{
+	if (CommandLine()->CheckParm("-nolocalsteamclient"))
+		return;
+
+	char path[MAX_PATH];
+	DWORD len = GetModuleFileNameA(nullptr, path, sizeof(path));
+	if (len == 0 || len >= sizeof(path))
+		return;
+
+	char *slash = strrchr(path, '\\');
+	if (!slash)
+		return;
+
+	const char steamClient[] = "steamclient.dll";
+	if ((size_t)(slash + 1 - path) + sizeof(steamClient) > sizeof(path))
+		return;
+
+	Q_strcpy(slash + 1, steamClient);
+	if (GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES)
+		return; // no local steamclient.dll, leave the choice to steam_api
+
+	if (!LoadLibraryExA(path, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH))
+		printf("Warning: unable to load %s (error %lu)\n", path, GetLastError());
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
 {
 #ifdef LAUNCHER_FIXES

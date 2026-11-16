@@ -206,6 +206,11 @@ int StartServer(char* cmdline)
 		CommandLine()->CreateCmdLine(cmdline);
 		CommandLine()->AppendParm("-steam", nullptr);
 
+#ifdef LAUNCHER_FIXES
+		// Prefer the steamclient next to the server over the one of an installed Steam client
+		Sys_PreloadSteamClient();
+#endif
+
 		// Load engine
 		g_pEngineModule = Sys_LoadModule(ENGINE_LIB);
 		if (!g_pEngineModule) {

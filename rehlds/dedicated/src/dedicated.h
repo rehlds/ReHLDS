@@ -41,3 +41,4 @@ bool Sys_SetupConsole();
 void Sys_PrepareConsoleInput();
 void Sys_InitPingboost();
 void Sys_WriteProcessIdFile();
+void Sys_PreloadSteamClient();
