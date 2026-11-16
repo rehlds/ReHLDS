@@ -33,17 +33,38 @@ ReHLDS is licensed under the [MIT License](./LICENSE).
 > See [LICENSE-TRANSITION.md](./LICENSE-TRANSITION.md) for details.
 
 ## How can use it?
-ReHLDS is fully compatible with the official pre-anniversary edition of HLDS (engine version <= 8684) downloaded by steamcmd. All you have to do is to download ReHLDS binaries and replace original swds.dll/engine_i486.so. For windows you can also copy a swds.pdb file with a debug information.
+ReHLDS works with the official HLDS downloaded by steamcmd, both the pre-anniversary edition (`steam_legacy` branch, engine version <= 8684) and the current 25th Anniversary edition (engine version 9890 and later). All you have to do is to download ReHLDS binaries and replace original swds.dll/engine_i486.so. For windows you can also copy a swds.pdb file with a debug information.
+
+ReHLDS is still the pre-anniversary engine: on a 25th Anniversary install it runs with that install's own `steam_api`, content and game DLLs, but engine-side changes of the anniversary engine (for example the higher packet entity limit) are not part of it.
 
 > [!CAUTION]  
 > ReHLDS is not compatible with an old 5xxx or below platforms downloaded by hldsupdatetool.
 
 #### Downloading HLDS via steamcmd
 
+Current (25th Anniversary) edition:
+```
+app_set_config 90 mod cstrike
+app_update 90 validate
+```
+
+Pre-anniversary edition:
 ```
 app_set_config 90 mod cstrike
 app_update 90 -beta steam_legacy validate
 ```
+
+steamcmd does not always switch an existing install between these branches cleanly; when switching, use a fresh folder.
+
+#### Notes
+- Keep the `steam_api.dll` / `libsteam_api.so` of the HLDS install; do not copy one from another HLDS build. The server prints which ones it loaded at startup and in the `version` command:
+  ```
+  Steam API: Steamworks SDK 1.53a (HLDS 9890 and later)
+  Steam client: server folder
+  ```
+  With `-debug` both lines show full paths. If `Steam client` shows the folder of an installed Steam client instead of the server folder, the server's own `steamclient` was not used.
+- The 25th Anniversary Half-Life game DLL sets the new `EFLAG_FLESH_SOUND` flag, and its `valve/delta.lst` sends `eflags` as 2 bits. Use the `delta.lst` of the install; a mod that ships its own `delta.lst` from a pre-anniversary setup drops this flag.
+- Linux, pre-anniversary installs: HLDS ships an old `libstdc++.so.6` and `libgcc_s.so.1` in the server folder. With `hlds_run` (`LD_LIBRARY_PATH=.`) they take the place of the system libraries, and game DLLs or plugins built with a newer compiler fail to load (`GLIBCXX_... not found`). Remove or rename them if you need such modules.
 
 ## Downloads
 * [Release builds](https://github.com/rehlds/ReHLDS/releases)
