@@ -119,7 +119,8 @@ protected:
 		CMD_ID_UNLOADMODULE,
 		CMD_ID_TITLE,
 		CMD_ID_SHOWCON,
-		CMD_ID_ECHO
+		CMD_ID_ECHO,
+		CMD_ID_VERSION
 	};
 
 	void CMD_Developer(char *cmdLine);
@@ -133,6 +134,7 @@ protected:
 	void CMD_UnloadModule(char *cmdLine);
 	void CMD_LoadModule(char *cmdLine);
 	void CMD_Echo(char *cmdLine);
+	void CMD_Version(char *cmdLine);
 
 	struct LocalCommandID_s {
 		char *name;
