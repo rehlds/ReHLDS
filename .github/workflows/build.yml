@@ -30,12 +30,12 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+        uses: microsoft/setup-msbuild@v3
 
 # TODO: add support of 141_xp toolchain at VS2022+
 #      - name: Install v140, v141 and v142 toolsets
@@ -181,7 +181,7 @@ jobs:
         shell: "pwsh"
 
       - name: Deploy artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: win32
           path: publish/*
@@ -211,7 +211,7 @@ jobs:
 
     steps:
       - name: Deploying windows artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: win32
 
@@ -262,7 +262,7 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -379,7 +379,7 @@ jobs:
         shell: bash
 
       - name: Deploy artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         id: upload-job
         with:
           name: linux32
@@ -392,12 +392,12 @@ jobs:
 
     steps:
       - name: Deploying linux artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: linux32
 
       - name: Deploying windows artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: win32
 
@@ -467,7 +467,7 @@ jobs:
         shell: bash
 
       - name: Publish artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: rehlds-ci-${{ env.APP_VERSION }}
           path: |
@@ -476,7 +476,7 @@ jobs:
             *.asc
 
       - name: Release artifacts
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         id: publish-job
         if: |
           startsWith(github.ref, 'refs/tags/') &&
