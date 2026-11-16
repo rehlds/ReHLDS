@@ -847,7 +847,7 @@ hull_t *SV_HullForStudioModel(const edict_t *pEdict, const vec_t *mins, const ve
 	if (SV_StudioSkipsShield(pEdict))
 		bSkipShield = 1;
 
-	if ((g_psv.models[pEdict->v.modelindex]->flags & FL_ONGROUND) || useComplexHull == TRUE)
+	if ((g_psv.models[pEdict->v.modelindex]->flags & STUDIO_TRACE_HITBOX) || useComplexHull == TRUE)
 	{
 		VectorScale(size, factor, size);
 		offset[0] = 0;
