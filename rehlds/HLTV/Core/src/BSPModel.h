@@ -88,8 +88,9 @@ private:
 
 protected:
 	model_t m_model;
-	byte m_novis[MAX_MAP_LEAFS / 8];
+	byte m_novis[MAX_MAP_LEAFS / 8 + 1];
 	byte *m_base;
+	int m_visdatasize;
 
 	int m_visframecount;
 	mleaf_t *m_currentLeaf;

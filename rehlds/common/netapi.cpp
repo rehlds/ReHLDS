@@ -92,7 +92,8 @@ bool StringToSockaddr(const char *s, struct sockaddr *sadr)
 	p->sin_family = AF_INET;
 	p->sin_port = 0;
 
-	strcpy(copy, s);
+	strncpy(copy, s, sizeof(copy) - 1);
+	copy[sizeof(copy) - 1] = '\0';
 
 	// strip off a trailing :port if present
 	for (colon = copy ; *colon ; colon++)

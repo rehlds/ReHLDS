@@ -58,6 +58,9 @@ void CBaseFileSystem::Unmount()
 void CBaseFileSystem::CreateDirHierarchy(const char *path, const char *pathID)
 {
 	CSearchPath *searchPath = GetWritePath(pathID);
+	if (!searchPath)
+		return;
+
 	int len = Q_strlen(searchPath->GetPath().String()) + Q_strlen(path);
 	char *buf = (char *)alloca((len + 1) * sizeof(char));
 
@@ -192,7 +195,7 @@ void CBaseFileSystem::AddSearchPathInternal(const char *pPath, const char *pathI
 // Returns true on success, false on failure
 bool CBaseFileSystem::RemoveSearchPath(const char *pPath)
 {
-	char *newPath = (char *)alloca((Q_strlen(pPath) + 1) * sizeof(char));
+	char *newPath = (char *)alloca((MAX_PATH + Q_strlen(pPath) + 1) * sizeof(char));
 
 #ifdef _WIN32
 	if (Q_strchr(pPath, ':'))
@@ -341,7 +344,7 @@ FileHandle_t CBaseFileSystem::FindFile(CSearchPath *path, const char *pFileName,
 			return FILESYSTEM_INVALID_HANDLE;
 		}
 
-		struct _stat buf;
+		struct _stat buf = {};
 		if (FS_stat(pTmpFileName, &buf) == -1) {
 			Warning(FILESYSTEM_WARNING, "_stat on file %s which appeared to exist failed!!!\n", pTmpFileName);
 		}
@@ -395,6 +398,10 @@ FileHandle_t CBaseFileSystem::Open(const char *pFileName, const char *pOptions, 
 	}
 
 	CSearchPath *searchPath = GetWritePath(pathID);
+	if (!searchPath) {
+		return FILESYSTEM_INVALID_HANDLE;
+	}
+
 	int len = Q_strlen(searchPath->GetPath().String()) + Q_strlen(pFileName);
 	char *pTmpFileName = (char *)alloca((len + 1) * sizeof(char));
 
@@ -408,7 +415,7 @@ FileHandle_t CBaseFileSystem::Open(const char *pFileName, const char *pOptions, 
 		return FILESYSTEM_INVALID_HANDLE;
 	}
 
-	struct _stat buf;
+	struct _stat buf = {};
 	if (FS_stat(pTmpFileName, &buf) == -1) {
 		Warning(FILESYSTEM_WARNING, "_stat on file %s which appeared to exist failed!!!\n", pTmpFileName);
 	}
@@ -746,6 +753,9 @@ char *CBaseFileSystem::ReadLine(char *pOutput, int maxChars, FileHandle_t file)
 void CBaseFileSystem::RemoveFile(const char *pRelativePath, const char *pathID)
 {
 	CSearchPath *searchPath = GetWritePath(pathID);
+	if (!searchPath)
+		return;
+
 	int len = Q_strlen(searchPath->GetPath().String()) + Q_strlen(pRelativePath);
 	char *pTmpFileName = (char *)alloca((len + 1) * sizeof(char));
 
@@ -992,7 +1002,7 @@ bool CBaseFileSystem::PreparePackFile(CSearchPath &packfile, int64_t offsetofpac
 		}
 
 		FS_fseek(packfile.m_hPackFile->m_pFile, packfile.m_hPackFile->m_nStartOffset + header.dirofs + offsetofpackinmetafile, FILESYSTEM_SEEK_HEAD);
-		Read(newfiles, header.dirlen, packfile.m_hPackFile->m_pFile);
+		FS_fread(newfiles, 1, header.dirlen, packfile.m_hPackFile->m_pFile);
 
 		for (int i = 0; i < numpackfiles; i++)
 		{
@@ -1042,7 +1052,7 @@ bool CBaseFileSystem::Prepare64BitPackFile(CSearchPath &packfile, int64_t offset
 		}
 
 		FS_fseek(packfile.m_hPackFile->m_pFile, packfile.m_hPackFile->m_nStartOffset + header.dirofs + offsetofpackinmetafile, FILESYSTEM_SEEK_HEAD);
-		Read(newfiles, header.dirlen, packfile.m_hPackFile->m_pFile);
+		FS_fread(newfiles, 1, header.dirlen, packfile.m_hPackFile->m_pFile);
 
 		for (int i = 0; i < numpackfiles; i++)
 		{
@@ -1550,7 +1560,7 @@ bool CBaseFileSystem::FullPathToRelativePath(const char *pFullpath, char *pRelat
 		delete [] searchbase;
 	}
 
-	return false;
+	return success;
 }
 
 bool CBaseFileSystem::OpenedFileLessFunc(COpenedFile const &src1, COpenedFile const &src2)
@@ -1566,7 +1576,11 @@ void CBaseFileSystem::RemoveAllSearchPaths()
 
 void CBaseFileSystem::StripFilename(char *path)
 {
-	int length = Q_strlen(path) - 1;
+	int length = Q_strlen(path);
+	if (length <= 0)
+		return;
+
+	length--;
 	while (length > 0)
 	{
 		if (path[length] == CORRECT_PATH_SEPARATOR
@@ -1594,6 +1608,9 @@ void CBaseFileSystem::FixSlashes(char *str)
 
 void CBaseFileSystem::FixPath(char *str)
 {
+	if (!str[0])
+		return;
+
 	char *lastChar = &str[Q_strlen(str) - 1];
 	if (*lastChar != CORRECT_PATH_SEPARATOR && *lastChar != INCORRECT_PATH_SEPARATOR)
 	{

@@ -88,9 +88,7 @@ void CCommandLine::LoadParametersFromFile(const char *&pSrc, char *&pDst, int ma
 	char szFileName[ MAX_PATH ];
 	char *pOut;
 
-#if 0
 	char *pDestStart = pDst;
-#endif
 
 	// Skip the @ sign
 	pSrc++;
@@ -98,11 +96,9 @@ void CCommandLine::LoadParametersFromFile(const char *&pSrc, char *&pDst, int ma
 
 	while (*pSrc && *pSrc != ' ')
 	{
-		*pOut++ = *pSrc++;
-#if 0
 		if ((pOut - szFileName) >= (MAX_PATH - 1))
 			break;
-#endif
+		*pOut++ = *pSrc++;
 	}
 
 	*pOut = '\0';
@@ -125,11 +121,9 @@ void CCommandLine::LoadParametersFromFile(const char *&pSrc, char *&pDst, int ma
 
 			*pDst++ = c;
 
-#if 0
 			// Don't go past the end, and allow for our terminating space character AND a terminating null character.
 			if ((pDst - pDestStart) >= (maxDestLen - 2))
 				break;
-#endif
 
 			// Get the next character, if there are more
 			c = (char)fgetc(fp);

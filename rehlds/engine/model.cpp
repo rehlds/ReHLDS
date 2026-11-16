@@ -33,6 +33,8 @@ char loadname[MAX_MODEL_NAME];
 model_t mod_known[MAX_KNOWN_MODELS];
 int mod_numknown;
 unsigned char* mod_base;
+int mod_filelength;
+int mod_visdatasize;
 char *wadpath;
 int tested;
 int ad_enabled;
@@ -293,6 +295,10 @@ model_t *Mod_LoadModel(model_t *mod, qboolean crash, qboolean trackCRC)
 		return 0;
 	}
 
+	// Record the file size so the model loaders can validate offsets/sizes
+	// read from the file header against the actual buffer length.
+	mod_filelength = length;
+
 
 	if (trackCRC)
 	{
@@ -504,8 +510,10 @@ void Mod_LoadTextures(lump_t *l)
 		mt->height = LittleLong(mt->height);
 		if (mt->width & 0xF || mt->height & 0xF)
 			Sys_Error("%s: Texture %s is not 16 aligned", __func__, mt);
+		if (mt->width <= 0 || mt->height <= 0 || mt->width > 4096 || mt->height > 4096)
+			Sys_Error("%s: Texture %s has invalid size %ix%i", __func__, mt->name, mt->width, mt->height);
 
-		pixels = 85 * mt->height * mt->width / 64;
+		pixels = (int)((int64_t)85 * mt->height * mt->width / 64);
 		palette = *(uint16*)((char*)mt + sizeof(miptex_t) + pixels);
 
 		tx = (texture_t *)Hunk_AllocName(2 + 8 * palette + pixels + sizeof(texture_t), loadname);
@@ -666,8 +674,10 @@ void Mod_LoadVisibility(lump_t *l)
 	if (!l->filelen)
 	{
 		loadmodel->visdata = NULL;
+		mod_visdatasize = 0;
 		return;
 	}
+	mod_visdatasize = l->filelen;
 	loadmodel->visdata = (byte*) Hunk_AllocName(l->filelen, loadname);
 	Q_memcpy(loadmodel->visdata, mod_base + l->fileofs, l->filelen);
 }
@@ -936,9 +946,16 @@ void Mod_LoadFaces(lump_t *l)
 		if (side)
 			out->flags |= SURF_PLANEBACK;
 
+		if (planenum < 0 || planenum >= loadmodel->numplanes)
+			Sys_Error("%s: bad plane number %i in %s", __func__, planenum, loadmodel->name);
+
 		out->plane = loadmodel->planes + planenum;
 
-		out->texinfo = loadmodel->texinfo + LittleShort(in->texinfo);
+		int texinfoIndex = LittleShort(in->texinfo);
+		if (texinfoIndex < 0 || texinfoIndex >= loadmodel->numtexinfo)
+			Sys_Error("%s: bad texinfo number %i in %s", __func__, texinfoIndex, loadmodel->name);
+
+		out->texinfo = loadmodel->texinfo + texinfoIndex;
 
 		CalcSurfaceExtents(out);
 
@@ -1024,6 +1041,8 @@ void Mod_LoadNodes(lump_t *l)
 		}
 
 		p = LittleLong(in->planenum);
+		if (p < 0 || p >= loadmodel->numplanes)
+			Sys_Error("%s: bad plane number %i in %s", __func__, p, loadmodel->name);
 		out->plane = loadmodel->planes + p;
 
 		out->firstsurface = LittleShort(in->firstface);
@@ -1033,9 +1052,17 @@ void Mod_LoadNodes(lump_t *l)
 		{
 			p = LittleShort(in->children[j]);
 			if (p >= 0)
+			{
+				if (p >= count)
+					Sys_Error("%s: bad node child %i in %s", __func__, p, loadmodel->name);
 				out->children[j] = loadmodel->nodes + p;
+			}
 			else
+			{
+				if ((-1 - p) >= loadmodel->numleafs)
+					Sys_Error("%s: bad leaf child %i in %s", __func__, p, loadmodel->name);
 				out->children[j] = (mnode_t *)(loadmodel->leafs + (-1 - p));
+			}
 		}
 	}
 
@@ -1068,15 +1095,26 @@ void Mod_LoadLeafs(lump_t *l)
 		p = LittleLong(in->contents);
 		out->contents = p;
 
-		out->firstmarksurface = loadmodel->marksurfaces +
-			LittleShort(in->firstmarksurface);
-		out->nummarksurfaces = LittleShort(in->nummarksurfaces);
+		int firstmarksurface = LittleShort(in->firstmarksurface);
+		int nummarksurfaces = LittleShort(in->nummarksurfaces);
+		if (firstmarksurface < 0 || nummarksurfaces < 0 ||
+			firstmarksurface + nummarksurfaces > loadmodel->nummarksurfaces)
+		{
+			Sys_Error("%s: bad marksurface range (%i + %i) in %s",
+				__func__, firstmarksurface, nummarksurfaces, loadmodel->name);
+		}
+		out->firstmarksurface = loadmodel->marksurfaces + firstmarksurface;
+		out->nummarksurfaces = nummarksurfaces;
 
 		p = LittleLong(in->visofs);
 		if (p == -1)
 			out->compressed_vis = NULL;
 		else
+		{
+			if (p < 0 || p >= mod_visdatasize)
+				Sys_Error("%s: bad visofs %i in %s", __func__, p, loadmodel->name);
 			out->compressed_vis = loadmodel->visdata + p;
+		}
 		out->efrags = NULL;
 
 		for (j = 0; j < 4; j++)
@@ -1286,6 +1324,20 @@ void EXT_FUNC Mod_LoadBrushModel_internal(model_t *mod, void *buffer)
 
 	for (i = 0; i < sizeof(dheader_t) / 4; i++)
 		((int *)header)[i] = LittleLong(((int *)header)[i]);
+
+	// Validate every lump offset/size against the actual file size before
+	// any loader dereferences "mod_base + fileofs". This prevents OOB reads
+	// from a malformed BSP header.
+	for (i = 0; i < HEADER_LUMPS; i++)
+	{
+		if (header->lumps[i].fileofs < 0 || header->lumps[i].filelen < 0 ||
+			header->lumps[i].fileofs > mod_filelength ||
+			header->lumps[i].filelen > mod_filelength - header->lumps[i].fileofs)
+		{
+			Sys_Error("%s: %s has invalid lump #%i (offset %i, length %i, file size %i)",
+				__func__, mod->name, i, header->lumps[i].fileofs, header->lumps[i].filelen, mod_filelength);
+		}
+	}
 
 	// load into heap
 	Mod_LoadVertexes(&header->lumps[LUMP_VERTEXES]);

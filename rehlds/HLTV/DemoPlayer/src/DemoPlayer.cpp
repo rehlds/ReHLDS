@@ -958,6 +958,7 @@ void DemoPlayer::ExecuteDemoFileCommands(BitBuffer *stream)
 		{
 			char szCmdName[64];
 			stream->ReadBuf(sizeof(szCmdName), szCmdName);
+			szCmdName[sizeof(szCmdName) - 1] = '\0';
 			m_Engine->Cbuf_AddText(szCmdName);
 			m_Engine->Cbuf_AddText("\n");
 			break;
@@ -995,6 +996,12 @@ void DemoPlayer::ExecuteDemoFileCommands(BitBuffer *stream)
 			int sampleSize = stream->ReadLong();
 
 			char sample[256];
+			if (sampleSize < 0 || sampleSize >= (int)sizeof(sample))
+			{
+				m_System->Printf("WARNING! DemoPlayer::ExecuteDemoFileCommands: invalid sound sample size %i\n", sampleSize);
+				return;
+			}
+
 			stream->ReadBuf(sampleSize, sample);
 			sample[sampleSize] = '\0';
 
@@ -1012,6 +1019,12 @@ void DemoPlayer::ExecuteDemoFileCommands(BitBuffer *stream)
 			Q_memset(data, 0, sizeof(data));
 
 			int length = stream->ReadLong();
+			if (length < 0 || length > (int)sizeof(data))
+			{
+				m_System->Printf("WARNING! DemoPlayer::ExecuteDemoFileCommands: invalid payload size %i\n", length);
+				return;
+			}
+
 			stream->ReadBuf(length, data);
 
 			m_Engine->ClientDLL_ReadDemoBuffer(length, data);

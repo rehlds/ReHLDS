@@ -614,7 +614,7 @@ bool NetChannel::CheckForCompletion(int stream, int intotalbuffers)
 	c = 0;
 
 	if (stream != FRAG_NORMAL_STREAM && stream != FRAG_FILE_STREAM) {
-		m_System->DPrintf("ERROR! NetChannel::CheckForCompletion: invalid stream number %i.\n");
+		m_System->DPrintf("ERROR! NetChannel::CheckForCompletion: invalid stream number %i.\n", stream);
 		return false;
 	}
 
@@ -1177,15 +1177,27 @@ void NetChannel::CopyNormalFragments()
 	}
 #endif
 
-	if (*(uint32 *)packet->data.GetData() == MAKEID('B', 'Z', '2', '\0'))
+	if (totalSize >= 4 && *(uint32 *)packet->data.GetData() == MAKEID('B', 'Z', '2', '\0'))
 	{
 		char uncompressed[65536];
 		unsigned int uncompressedSize = 65536;
 
-		BZ2_bzBuffToBuffDecompress(uncompressed, &uncompressedSize, (char *)packet->data.GetData() + 4, totalSize - 4, 1, 0);
-
-		packet->data.Resize(uncompressedSize);
-		packet->data.WriteBuf(uncompressed, uncompressedSize);
+		int result = BZ2_bzBuffToBuffDecompress(uncompressed, &uncompressedSize, (char *)packet->data.GetData() + 4, totalSize - 4, 1, 0);
+		if (result == BZ_OK)
+		{
+			packet->data.Resize(uncompressedSize);
+			packet->data.WriteBuf(uncompressed, uncompressedSize);
+		}
+		else
+		{
+			if (packet->address.IsValid())
+			{
+				m_System->Printf("WARNING! NetChannel::CopyNormalFragments: bzip2 decompression failed (%i) from %s\n", result, packet->address.ToString());
+			}
+			packet->data.Clear();
+			m_incomingbufs[FRAG_NORMAL_STREAM] = nullptr;
+			return;
+		}
 	}
 
 	packet->data.Reset();

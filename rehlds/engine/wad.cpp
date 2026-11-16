@@ -81,14 +81,31 @@ int W_LoadWadFile(char *filename)
 	if (*(uint32 *)header->identification != MAKEID('W', 'A', 'D', '3'))
 		Sys_Error("%s: Wad file %s doesn't have WAD3 id\n", __func__, filename);
 	wad->wad_numlumps = LittleLong(header->numlumps);
+	int infotableofs = LittleLong(header->infotableofs);
 
-	lumpinfo_t * lump_p = (lumpinfo_t *)&wad->wad_base[LittleLong(header->infotableofs)];
+	// Validate the header and lump table against the actual file size to
+	// prevent OOB reads when swapping lumps / pictures below.
+	int wadsize = COM_FileSize(filename);
+	if (wadsize < (int)sizeof(wadinfo_t) || wad->wad_numlumps < 0 ||
+		infotableofs < (int)sizeof(wadinfo_t) ||
+		(size_t)infotableofs + (size_t)wad->wad_numlumps * sizeof(lumpinfo_t) > (size_t)wadsize)
+	{
+		Sys_Error("%s: Wad file %s has invalid lump table (numlumps %i, infotableofs %i, file size %i)\n",
+			__func__, filename, wad->wad_numlumps, infotableofs, wadsize);
+	}
+
+	lumpinfo_t * lump_p = (lumpinfo_t *)&wad->wad_base[infotableofs];
 	wad->wad_lumps = lump_p;
 
 	for (int i = 0; i < wad->wad_numlumps; ++i, ++lump_p)
 	{
-		lump_p->filepos = LittleLong(lump_p->filepos);
-		lump_p->size = LittleLong(lump_p->size);
+		int filepos = LittleLong(lump_p->filepos);
+		int size = LittleLong(lump_p->size);
+		if (filepos < 0 || size < 0 || (size_t)filepos + (size_t)size > (size_t)wadsize)
+			Sys_Error("%s: Wad file %s lump #%i has invalid data range (filepos %i, size %i, file size %i)\n",
+				__func__, filename, i, filepos, size, wadsize);
+		lump_p->filepos = filepos;
+		lump_p->size = size;
 		W_CleanupName(lump_p->name, lump_p->name);
 		if (lump_p->type == 66)
 			SwapPic((qpic_t *)&wad->wad_base[lump_p->filepos]);
@@ -104,11 +121,12 @@ lumpinfo_t *W_GetLumpinfo(int wad, char *name, qboolean doerror)
 	char clean[16];
 
 	W_CleanupName(name, clean);
+	lump_p = wads[wad].wad_lumps;
 	for (i = 0; i < wads[wad].wad_numlumps; i++)
 	{
-		lump_p = wads[i].wad_lumps;
 		if (!Q_strcmp(clean, lump_p->name))
 			return lump_p;
+		lump_p++;
 	}
 
 	if (doerror)

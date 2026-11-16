@@ -587,6 +587,18 @@ fragbuf_t *Netchan_FindBufferById(fragbuf_t **pplist, int id, qboolean allocate)
 	if (!allocate)
 		return nullptr;
 
+	// DoS hardening: limit the number of incoming frag buffers per list so a
+	// client cannot spam unique bufferids and exhaust memory.
+	{
+		int count = 0;
+		fragbuf_t *p = *pplist;
+		while (p) { count++; p = p->next; }
+		if (count >= 64) {
+			Con_Printf("%s: too many incoming frag buffers, dropping\n", __func__);
+			return nullptr;
+		}
+	}
+
 	// Create new entry
 	pnewbuf = Netchan_AllocFragbuf();
 	pnewbuf->bufferid = id;
@@ -1052,7 +1064,7 @@ void Netchan_CreateFragments_(qboolean server, netchan_t *chan, sizebuf_t *msg)
 	// Compress if not done already
 	if (*(uint32 *)msg->data != MAKEID('B', 'Z', '2', '\0'))
 	{
-		unsigned char compressed[65536];
+		unsigned char *compressed = (unsigned char *)Mem_Malloc(65536);
 		char hdr[4] = "BZ2";
 		unsigned int compressedSize = msg->cursize - sizeof(hdr);	// we should fit in same data buffer minus 4 bytes for a header
 		if (!BZ2_bzBuffToBuffCompress((char *)compressed, &compressedSize, (char *)msg->data, msg->cursize, 9, 0, 30))
@@ -1062,6 +1074,7 @@ void Netchan_CreateFragments_(qboolean server, netchan_t *chan, sizebuf_t *msg)
 			Q_memcpy(msg->data + sizeof(hdr), compressed, compressedSize);
 			msg->cursize = compressedSize + sizeof(hdr);
 		}
+		Mem_Free(compressed);
 	}
 
 	chunksize = chan->pfnNetchan_Blocksize(chan->connection_status);
@@ -1516,6 +1529,9 @@ qboolean Netchan_ValidateDecompress(netchan_t *chan, int stream, unsigned int co
 
 	if (compressedSize >= uncompressedSize)
 		return TRUE;
+
+	if (uncompressedSize == 0)
+		return TRUE; // avoid division by zero
 
 	float ratio = ((float)(uncompressedSize - compressedSize) / uncompressedSize) * 100.0f;
 	if (ratio < sv_net_incoming_decompression_max_ratio.value)

@@ -767,6 +767,7 @@ qboolean Draw_ValidateCustomLogo(cachewad_t *wad, unsigned char *data, lumpinfo_
 	if ((unsigned)(size + sizeof(miptex_t)) >= (unsigned)(lump->size + wad->cacheExtra))
 	{
 		Con_Printf("%s: Bad cached wad size %i/%i on %s\n", __func__, size + sizeof(miptex_t), lump->size + wad->cacheExtra, wad->name);
+		return FALSE;
 	}
 
 	paloffset = size + sizeof(miptex_t);

@@ -483,32 +483,32 @@ void MessageImpl::setParamPrimitive(size_t index, T value, bool sign)
 void MessageImpl::setTxformBuffer(size_t index, size_t startPos, size_t oldLength, size_t newLength)
 {
 	// Calculate the difference in length
-	int32_t diffLength = newLength - oldLength;
+	int64_t diffLength = (int64_t)newLength - (int64_t)oldLength;
 	if (diffLength != 0)
 	{
 		sizebuf_t &buf = m_Storage[BACK].buf;
 
 		// Check if the buffer size limit will be exceeded
-		if (buf.cursize + diffLength > buf.maxsize)
-		{
+		if ((int64_t)buf.cursize + diffLength > (int64_t)buf.maxsize)
 			Sys_Error(
 				"%s: Refusing to transform string with %i param of user message of %i bytes, "
-				"user message size limit is %i bytes\n", __func__, index, buf.cursize + diffLength, buf.maxsize);
-		}
+				"user message size limit is %i bytes\n", __func__, index, (int)(buf.cursize + diffLength), buf.maxsize);
 
 		// Move the data in the buffer
-		size_t moveLength = buf.cursize - (startPos + oldLength);
+		size_t moveLength = 0;
+		if (startPos + oldLength <= (size_t)buf.cursize)
+			moveLength = buf.cursize - (startPos + oldLength);
 		if (moveLength > 0)
 			Q_memmove(buf.data + startPos + newLength, buf.data + startPos + oldLength, moveLength);
 
-		buf.cursize += diffLength;
+		buf.cursize += (int)diffLength;
 
 		if (newLength < oldLength)
 			Q_memset(buf.data + startPos + newLength + moveLength, 0, oldLength - newLength);
 
 		// Update the position of all subsequent parameters
 		for (size_t i = index + 1; i < m_paramCount; i++)
-			m_params[i].posBack += diffLength;
+			m_params[i].posBack = (size_t)((int64_t)m_params[i].posBack + diffLength);
 	}
 }
 

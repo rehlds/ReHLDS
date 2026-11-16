@@ -114,7 +114,7 @@ qboolean HPAK_GetDataPointer(char *pakname, struct resource_s *pResource, unsign
 		retval = TRUE;
 		FS_Seek(fp, entry->nOffset, FILESYSTEM_SEEK_HEAD);
 
-		if (pbuffer && entry->nFileLength > 0)
+		if (pbuffer && entry->nFileLength > 0 && (unsigned int)entry->nFileLength < MAX_FILE_SIZE)
 		{
 			if (bufsize)
 				*bufsize = entry->nFileLength;
@@ -787,7 +787,7 @@ void HPAK_CreatePak(char *pakname, struct resource_s *pResource, void *pData, Fi
 		curpos = FS_Tell(fpSource);
 		pDiskData = (byte *)Mem_Malloc(pResource->nDownloadSize + 1);
 		Q_memset(pDiskData, 0, pResource->nDownloadSize);
-		FS_Read(pDiskData, pResource->nDownloadSize, 1, fp);
+		FS_Read(pDiskData, pResource->nDownloadSize, 1, fpSource);
 		FS_Seek(fpSource, curpos, FILESYSTEM_SEEK_HEAD);
 		MD5Update(&ctx, pDiskData, pResource->nDownloadSize);
 		Mem_Free(pDiskData);

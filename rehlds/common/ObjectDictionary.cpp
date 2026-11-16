@@ -118,7 +118,7 @@ int ObjectDictionary::FindClosestAsIndex(float key)
 	int middle;
 	int first = 0;
 	int last = m_size - 1;
-	float keyMiddle, keyNext;
+	float keyMiddle;
 
 	if (key < m_entries[last].key)
 	{
@@ -152,15 +152,13 @@ int ObjectDictionary::FindClosestAsIndex(float key)
 		middle = last;
 	}
 
-	keyNext = m_entries[middle - 1].key;
-	while (keyNext == key) {
-		keyNext = m_entries[middle--].key;
+	while (middle > 0 && m_entries[middle - 1].key == key) {
+		--middle;
 	}
 
 	AddToCache(&m_entries[middle], key);
 	return middle;
 }
-
 void ObjectDictionary::ClearCache()
 {
 	Q_memset(m_cache, 0, sizeof(m_cache));
@@ -217,9 +215,19 @@ bool ObjectDictionary::RemoveIndexRange(int minIndex, int maxIndex)
 			maxIndex = m_size - 1;
 	}
 
-	int offset = minIndex + maxIndex - 1;
-	m_size -= offset;
+	int count = maxIndex - minIndex + 1;
+	if (count <= 0 || minIndex >= m_size)
+		return false;
+
+	// Shift the remaining entries down over the removed range.
+	int remaining = m_size - maxIndex - 1;
+	if (remaining > 0) {
+		Q_memmove(&m_entries[minIndex], &m_entries[maxIndex + 1], remaining * sizeof(entry_t));
+	}
+
+	m_size -= count;
 	CheckSize();
+	ClearCache();
 	return true;
 }
 
@@ -253,18 +261,17 @@ bool ObjectDictionary::RemoveSingle(void *object)
 bool ObjectDictionary::RemoveKey(float key)
 {
 	int i = FindClosestAsIndex(key);
-	if (m_entries[i].key == key)
+	if (i < 0 || m_entries[i].key != key)
 	{
-		int j = i;
-		do {
-			++j;
-		}
-		while (key == m_entries[j + 1].key);
-
-		return RemoveIndexRange(i, j);
+		return false;
 	}
 
-	return false;
+	int j = i;
+	while (j + 1 < m_size && key == m_entries[j + 1].key) {
+		++j;
+	}
+
+	return RemoveIndexRange(i, j);
 }
 
 bool ObjectDictionary::CheckSize()

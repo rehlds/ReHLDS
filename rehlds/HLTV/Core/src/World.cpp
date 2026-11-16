@@ -1510,19 +1510,17 @@ bool World::UncompressEntitiesFromStream(frame_t *frame, BitBuffer *stream, unsi
 
 	while (stream->PeekBits(16))
 	{
+		if (stream->IsOverflowed()) {
+			break;
+		}
+
 		newnum = ParseDeltaHeader(stream, remove, custom, numbase, newbl, newblindex, false, offset);
 		oldnum = (oldindex >= deltaFrame.entitynum) ? ENTITY_SENTINEL : deltaEntity[oldindex].number;
 
-		while (oldnum < newnum)
+		while (oldnum < newnum && newindex < MAX_PACKET_ENTITIES)
 		{
 			//
 			// one or more entities from the old packet are unchanged
-
-			if (newindex >= MAX_PACKET_ENTITIES)
-			{
-				m_System->DPrintf("WARNING!World::UncompressEntitiesFromStream: newindex >= MAX_PACKET_ENTITIES.\n");
-				stream->m_Overflowed = true;
-			}
 
 			// copy one of the old entities over to the new packet unchanged
 			Q_memcpy(&entity[newindex], &deltaEntity[oldindex], sizeof(entity[newindex]));
@@ -1532,6 +1530,13 @@ bool World::UncompressEntitiesFromStream(frame_t *frame, BitBuffer *stream, unsi
 
 			// lookup next index
 			oldnum = (oldindex >= deltaFrame.entitynum) ? ENTITY_SENTINEL : deltaEntity[oldindex].number;
+		}
+
+		if (newindex >= MAX_PACKET_ENTITIES)
+		{
+			m_System->DPrintf("WARNING! World::UncompressEntitiesFromStream: too many entities.\n");
+			stream->m_Overflowed = true;
+			break;
 		}
 
 		// delta from previous state
@@ -1571,12 +1576,6 @@ bool World::UncompressEntitiesFromStream(frame_t *frame, BitBuffer *stream, unsi
 				continue;
 			}
 
-			if (newindex >= MAX_PACKET_ENTITIES)
-			{
-				m_System->DPrintf("World::UncompressEntitiesFromStream: newindex >= MAX_PACKET_ENTITIES.\n");
-				stream->m_Overflowed = true;
-			}
-
 			//
 			// Insert new the entity to frame
 
@@ -1591,6 +1590,13 @@ bool World::UncompressEntitiesFromStream(frame_t *frame, BitBuffer *stream, unsi
 			}
 			else
 			{
+				if (newnum >= MAX_ENTITIES)
+				{
+					m_System->DPrintf("WARNING! World::UncompressEntitiesFromStream: entity number %i >= MAX_ENTITIES\n", newnum);
+					stream->m_Overflowed = true;
+					break;
+				}
+
 				baseline = &m_BaseLines[newnum];
 			}
 
@@ -1617,14 +1623,8 @@ bool World::UncompressEntitiesFromStream(frame_t *frame, BitBuffer *stream, unsi
 	// Copy all the rest of the entities from the old packet
 	//
 
-	while (oldindex != ENTITY_SENTINEL && oldindex < deltaFrame.entitynum)
+	while (oldindex != ENTITY_SENTINEL && oldindex < deltaFrame.entitynum && newindex < MAX_PACKET_ENTITIES)
 	{
-		if (newindex >= MAX_PACKET_ENTITIES)
-		{
-			m_System->DPrintf("WARNING! World::UncompressEntitiesFromStream: newindex >= MAX_PACKET_ENTITIES.\n");
-			stream->m_Overflowed = true;
-		}
-
 		// copy everything to the new state we are delta'ing
 		Q_memcpy(&entity[newindex], &deltaEntity[oldindex], sizeof(entity[newindex]));
 		newindex++;
@@ -1656,6 +1656,13 @@ bool World::UncompressEntitiesFromStream(frame_t *frame, BitBuffer *stream)
 			break;
 		}
 
+		if (newindex >= MAX_PACKET_ENTITIES)
+		{
+			m_System->Printf("WARNING! World::UncompressEntitiesFromStream: too many entities.\n");
+			stream->m_Overflowed = true;
+			break;
+		}
+
 		num = ParseDeltaHeader(stream, remove, custom, numbase, newbl, newblindex, true, offset);
 		if (num >= MAX_ENTITIES)
 		{
@@ -1677,6 +1684,12 @@ bool World::UncompressEntitiesFromStream(frame_t *frame, BitBuffer *stream)
 		}
 		else if (offset)
 		{
+			if (offset > newindex)
+			{
+				m_System->Printf("WARNING! World::UncompressEntitiesFromStream: invalid baseline offset %i.\n", offset);
+				stream->m_Overflowed = true;
+				break;
+			}
 			baseline = &entities[newindex - offset];
 		}
 		else

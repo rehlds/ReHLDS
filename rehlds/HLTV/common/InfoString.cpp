@@ -161,7 +161,7 @@ char *InfoString::ValueForKey(const char *key)
 				return "";
 			}
 
-			if (nCount >= MAX_INFO_KEY)
+			if (nCount >= MAX_INFO_KEY - 1)
 			{
 				s++;
 				// skip oversized key chars till the slash or EOL
@@ -189,7 +189,7 @@ char *InfoString::ValueForKey(const char *key)
 				break;
 			}
 
-			if (nCount >= MAX_INFO_VALUE)
+			if (nCount >= MAX_INFO_VALUE - 1)
 			{
 				s++;
 				// skip oversized value chars till the slash or EOL
@@ -253,7 +253,7 @@ bool InfoString::RemoveKey(const char *key)
 				break;
 			}
 
-			if (nCount >= MAX_INFO_KEY)
+			if (nCount >= MAX_INFO_KEY - 1)
 			{
 				s++;
 				// skip oversized key chars till the slash or EOL
@@ -280,7 +280,7 @@ bool InfoString::RemoveKey(const char *key)
 				break;
 			}
 
-			if (nCount >= MAX_INFO_VALUE)
+			if (nCount >= MAX_INFO_VALUE - 1)
 			{
 				s++;
 				// skip oversized value chars till the slash or EOL
@@ -334,7 +334,7 @@ void InfoString::RemovePrefixedKeys(char prefix)
 				break;
 			}
 
-			if (nCount >= MAX_INFO_KEY)
+			if (nCount >= MAX_INFO_KEY - 1)
 			{
 				s++;
 				// skip oversized key chars till the slash or EOL
@@ -361,7 +361,7 @@ void InfoString::RemovePrefixedKeys(char prefix)
 				break;
 			}
 
-			if (nCount >= MAX_INFO_VALUE) {
+			if (nCount >= MAX_INFO_VALUE - 1) {
 				s++;
 				// skip oversized value chars till the slash or EOL
 				continue;

@@ -32,6 +32,13 @@
 
 const int DELTA_MAX_FIELDS = 56;	// 7*8
 
+// Maximum length of a DT_STRING field when parsing a delta. The field's
+// storage size is not carried in the delta description (fieldSize == 1 for
+// strings), so this caps writes to the destination structure and prevents an
+// unbounded overflow from a malicious delta stream.
+const int MAX_DELTA_STRING_LENGTH = 255;
+
+
 enum
 {
 	DT_BYTE				= BIT(0),	// A byte

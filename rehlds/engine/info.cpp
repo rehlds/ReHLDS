@@ -875,7 +875,7 @@ void Info_Print(const char *s)
 			{
 				break;		// key should end with a \, not a NULL, but allow to print it
 			}
-			if (nCount >= MAX_KV_LEN)
+			if (nCount >= MAX_KV_LEN - 1)
 			{
 				s++;
 				continue;	// skip oversized key chars till the slash or EOL
@@ -911,7 +911,7 @@ void Info_Print(const char *s)
 			{
 				break;		// allow value to be ended with NULL
 			}
-			if (nCount >= MAX_KV_LEN)
+			if (nCount >= MAX_KV_LEN - 1)
 			{
 				s++;
 				continue;	// skip oversized value chars till the slash or EOL

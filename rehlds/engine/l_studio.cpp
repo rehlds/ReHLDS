@@ -40,13 +40,41 @@ void EXT_FUNC Mod_LoadStudioModel_internal(model_t * mod, void * buffer)
 	uint8 *pout;
 
 	studiohdr_t * phdr = (studiohdr_t *)buffer;
+
+	// COM_LoadFileForMe records the file size in mod_filelength. Reject files
+	// smaller than the fixed header so the reads/writes below stay in bounds.
+	if (mod_filelength < (int)sizeof(studiohdr_t))
+		Sys_Error("%s: %s is too small (%i bytes)", __func__, mod->name, mod_filelength);
+
 	i = LittleLong(phdr->version);
 	if (i != STUDIO_VERSION)
 	{
-		Q_memset(phdr, 0, 244u);
+		Q_memset(phdr, 0, sizeof(studiohdr_t));
 		Q_strcpy(phdr->name, "bogus");
-		phdr->length = 244;
-		phdr->texturedataindex = 244;
+		phdr->length = sizeof(studiohdr_t);
+		phdr->texturedataindex = sizeof(studiohdr_t);
+	}
+	else
+	{
+		// Validate header fields against the actual file size to prevent heap
+		// overflow in Cache_Alloc and out-of-bounds reads/copies below.
+		if (phdr->length < (int)sizeof(studiohdr_t) || phdr->length > mod_filelength)
+			Sys_Error("%s: %s has invalid length %i (file size %i)", __func__, mod->name, phdr->length, mod_filelength);
+
+		if (phdr->numtextures < 0 || phdr->numtextures > MAXSTUDIOSKINS)
+			Sys_Error("%s: %s has invalid numtextures %i", __func__, mod->name, phdr->numtextures);
+
+		if (phdr->texturedataindex < 0 || phdr->texturedataindex > phdr->length)
+			Sys_Error("%s: %s has invalid texturedataindex %i", __func__, mod->name, phdr->texturedataindex);
+
+		if (phdr->textureindex < 0 || phdr->textureindex > phdr->texturedataindex)
+			Sys_Error("%s: %s has invalid textureindex %i", __func__, mod->name, phdr->textureindex);
+
+		if (phdr->textureindex &&
+			phdr->textureindex + (size_t)phdr->numtextures * sizeof(mstudiotexture_t) > (size_t)phdr->texturedataindex)
+		{
+			Sys_Error("%s: %s texture table is out of range", __func__, mod->name);
+		}
 	}
 
 	mod->type = mod_studio;
@@ -63,7 +91,21 @@ void EXT_FUNC Mod_LoadStudioModel_internal(model_t * mod, void * buffer)
 			ptexture = (mstudiotexture_t *)(pout + phdr->textureindex);
 			for (i = 0; i < phdr->numtextures; i++, ptexture++)
 			{
+				// Width/height come straight from the file. Clamp to a sane
+				// range so "height * width" cannot overflow int and the pixel
+				// copy below cannot read past the file buffer.
+				if (ptexture->width < 1 || ptexture->height < 1 ||
+					ptexture->width > 8192 || ptexture->height > 8192)
+				{
+					Sys_Error("%s: %s texture #%i has invalid size %ix%i", __func__, mod->name, i, ptexture->width, ptexture->height);
+				}
+
 				size = ptexture->height * ptexture->width;
+				if (size > mod_filelength - (int)(pindata - (uint8 *)buffer) - 256 * 3)
+				{
+					Sys_Error("%s: %s texture #%i exceeds file bounds", __func__, mod->name, i);
+				}
+
 				ptexture->index = poutdata - pout;
 				Q_memcpy(poutdata, pindata, size);
 				poutdata += size;

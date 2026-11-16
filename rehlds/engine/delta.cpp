@@ -1053,11 +1053,24 @@ int DELTA_ParseDelta(unsigned char *from, unsigned char *to, delta_t *pFields)
 			break;
 		case DT_STRING:
 			st2 = (char *)&to[pTest->fieldOffset];
-			do
 			{
-				c = MSG_ReadBits(8);
-				*st2++ = c;
-			} while (c);
+				// fieldSize is always 1 for DT_STRING, so the destination
+				// array size is unknown at runtime. Cap the write to prevent
+				// an unbounded buffer overflow from a malicious string.
+				int strLen = 0;
+				do
+				{
+					c = MSG_ReadBits(8);
+					if (msg_badread)
+					{
+						break;
+					}
+					*st2++ = c;
+					strLen++;
+				} while (c && strLen < MAX_DELTA_STRING_LENGTH);
+				if (strLen >= MAX_DELTA_STRING_LENGTH)
+					st2[-1] = 0;
+			}
 			break;
 		default:
 			Con_Printf("%s: unparseable field type %i\n", __func__, fieldType);

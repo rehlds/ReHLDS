@@ -34,6 +34,7 @@ void BSPModel::Init(IBaseSystem *system)
 	m_visframecount = 0;
 	m_currentLeaf = nullptr;
 	m_base = nullptr;
+	m_visdatasize = 0;
 	m_wadpath = nullptr;
 	m_IsMinimal = false;
 
@@ -65,10 +66,16 @@ void BSPModel::LoadLeafs(lump_t *l)
 	}
 
 	count = l->filelen / sizeof(*in);
+	if (count > MAX_MAP_LEAFS) {
+		m_System->Errorf("BSPModel::LoadLeafs: too many leafs (%i > %i) in %s\n", count, MAX_MAP_LEAFS, m_model.name);
+		return;
+	}
+
 	out = (mleaf_t *)Mem_ZeroMalloc(count * sizeof(*out));
 
 	if (!out) {
 		m_System->Errorf("BSPModel::LoadLeafs: not enough memory to load leafs from %s\n", m_model.name);
+		return;
 	}
 
 	m_model.leafs = out;
@@ -83,14 +90,31 @@ void BSPModel::LoadLeafs(lump_t *l)
 		}
 
 		out->contents = _LittleLong(in->contents);
-		out->firstmarksurface = m_model.marksurfaces + _LittleShort(in->firstmarksurface);
-		out->nummarksurfaces = _LittleShort(in->nummarksurfaces);
+
+		int firstmarksurface = _LittleShort(in->firstmarksurface);
+		int nummarksurfaces = _LittleShort(in->nummarksurfaces);
+		if (m_model.marksurfaces &&
+			(firstmarksurface < 0 || nummarksurfaces < 0 ||
+			 firstmarksurface + nummarksurfaces > m_model.nummarksurfaces))
+		{
+			m_System->Errorf("BSPModel::LoadLeafs: bad marksurface range (%i + %i) in %s\n",
+				firstmarksurface, nummarksurfaces, m_model.name);
+			return;
+		}
+		out->firstmarksurface = m_model.marksurfaces + firstmarksurface;
+		out->nummarksurfaces = nummarksurfaces;
 
 		p = _LittleLong(in->visofs);
 		if (p == -1)
 			out->compressed_vis = nullptr;
 		else
+		{
+			if (p < 0 || p >= m_visdatasize) {
+				m_System->Errorf("BSPModel::LoadLeafs: bad visofs %i in %s\n", p, m_model.name);
+				return;
+			}
 			out->compressed_vis = m_model.visdata + p;
+		}
 
 		out->efrags = nullptr;
 
@@ -129,7 +153,12 @@ void BSPModel::LoadNodes(lump_t *l)
 			out->minmaxs[3 + j] = _LittleShort(in->maxs[j]);
 		}
 
-		out->plane = m_model.planes + _LittleLong(in->planenum);
+		p = _LittleLong(in->planenum);
+		if (p < 0 || p >= m_model.numplanes) {
+			m_System->Errorf("BSPModel::LoadNodes: bad plane number %i in %s\n", p, m_model.name);
+			return;
+		}
+		out->plane = m_model.planes + p;
 		out->firstsurface = _LittleShort(in->firstface);
 		out->numsurfaces = _LittleShort(in->numfaces);
 
@@ -137,9 +166,21 @@ void BSPModel::LoadNodes(lump_t *l)
 		{
 			p = _LittleShort(in->children[j]);
 			if (p >= 0)
+			{
+				if (p >= count) {
+					m_System->Errorf("BSPModel::LoadNodes: bad node child %i in %s\n", p, m_model.name);
+					return;
+				}
 				out->children[j] = m_model.nodes + p;
+			}
 			else
+			{
+				if ((-1 - p) >= m_model.numleafs) {
+					m_System->Errorf("BSPModel::LoadNodes: bad leaf child %i in %s\n", p, m_model.name);
+					return;
+				}
 				out->children[j] = (mnode_t *)(m_model.leafs + (-1 - p));
+			}
 		}
 	}
 
@@ -170,7 +211,7 @@ byte *BSPModel::LeafPVS(mleaf_t *leaf)
 
 byte *BSPModel::DecompressVis(unsigned char *in)
 {
-	static unsigned char decompressed[MAX_MAP_LEAFS / 8];
+	static unsigned char decompressed[MAX_MAP_LEAFS / 8 + 1];
 	if (in == nullptr) {
 		return m_novis;
 	}
@@ -358,15 +399,18 @@ void BSPModel::LoadVisibility(lump_t *l)
 	if (!l->filelen)
 	{
 		m_model.visdata = nullptr;
+		m_visdatasize = 0;
 		return;
 	}
 
 	m_model.visdata = (byte *)Mem_ZeroMalloc(l->filelen);
 	if (!m_model.visdata) {
 		m_System->Errorf("BSPModel::LoadPlanes: not enough memory to load planes from %s\n", m_model.name);
+		m_visdatasize = 0;
 		return;
 	}
 
+	m_visdatasize = l->filelen;
 	Q_memcpy(m_model.visdata, m_base + l->fileofs, l->filelen);
 }
 
@@ -738,6 +782,20 @@ bool BSPModel::LoadFromBuffer(unsigned int *buffer, int length, const char *name
 
 	for (i = 0; i < sizeof(dheader_t) / 4; i++) {
 		((int *)header)[i] = _LittleLong(((int *)header)[i]);
+	}
+
+	// Validate every lump offset/size against the actual file size before any
+	// loader dereferences "m_base + fileofs". Prevents OOB reads from a
+	// malformed BSP header.
+	for (i = 0; i < HEADER_LUMPS; i++) {
+		if (header->lumps[i].fileofs < 0 || header->lumps[i].filelen < 0 ||
+			header->lumps[i].fileofs > length ||
+			header->lumps[i].filelen > length - header->lumps[i].fileofs)
+		{
+			m_System->Errorf("BSPModel::LoadFromBuffer: %s has invalid lump #%i (offset %i, length %i, file size %i)\n",
+				m_model.name, i, header->lumps[i].fileofs, header->lumps[i].filelen, length);
+			return false;
+		}
 	}
 
 	// load into heap

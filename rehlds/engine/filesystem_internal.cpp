@@ -160,7 +160,8 @@ int FS_FPrintf(FileHandle_t file, char *pFormat, ...)
 	va_list va;
 
 	va_start(va, pFormat);
-	vsprintf(data, pFormat, va);
+	Q_vsnprintf(data, sizeof(data), pFormat, va);
+	data[sizeof(data) - 1] = 0;
 	va_end(va);
 
 	return g_pFileSystem->FPrintf(file, "%s", data);
