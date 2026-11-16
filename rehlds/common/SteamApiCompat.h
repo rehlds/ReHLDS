@@ -86,27 +86,45 @@ namespace SteamApiCompat
 		return pGameServer;
 	}
 
+	// Copies the engine version string into pszOut in the plain "x.x.x.x" form.
+	// The engine builds it as "<PatchVersion>/<suffix>", e.g. "1.1.2.2/Stdio" (see Host_Version in host.cpp).
+	// Steamworks documents this argument of SteamGameServer_Init as "x.x.x.x" (the master server compares it
+	// to detect out-of-date servers), so the "/..." suffix is cut off for the HL25 steam_api.
+	inline void PlainVersionString(const char *pchVersionString, char *pszOut, size_t outSize)
+	{
+		if (!outSize)
+			return;
+
+		strncpy(pszOut, pchVersionString ? pchVersionString : "", outSize - 1);
+		pszOut[outSize - 1] = '\0';
+
+		char *pSlash = strchr(pszOut, '/');
+		if (pSlash)
+			*pSlash = '\0';
+	}
+
+	// HL25 steam_api (SDK 1.53a/1.57): its SteamGameServer_Init is only an inline wrapper in the SDK headers that calls
+	// SteamInternal_GameServer_Init(unIP, 0, usGamePort, usQueryPort, eServerMode, pchVersionString).
+	// Do the same thing here: 0 for the legacy Steam port (unused since the SDK dropped it) and a plain version.
+	inline bool GameServer_InitHL25(Entries &api, uint32 unIP, uint16 usGamePort, uint16 usQueryPort, EServerMode eServerMode, const char *pchVersionString)
+	{
+		char szVersion[32];
+		PlainVersionString(pchVersionString, szVersion, sizeof(szVersion));
+
+		return api.internalGameServerInit(unIP, 0, usGamePort, usQueryPort, eServerMode, szVersion);
+	}
+
 	inline bool GameServer_Init(uint32 unIP, uint16 usSteamPort, uint16 usGamePort, uint16 usQueryPort, EServerMode eServerMode, const char *pchVersionString)
 	{
 		Entries &api = Get();
 		CachedGameServer() = nullptr;
 
+		// legacy steam_api (SDK 1.22/1.23a): exported SteamGameServer_Init, arguments passed through unchanged
 		if (api.legacyGameServerInit)
 			return api.legacyGameServerInit(unIP, usSteamPort, usGamePort, usQueryPort, eServerMode, pchVersionString);
 
 		if (api.internalGameServerInit)
-		{
-			// HL25 steam_api (like the SDK 1.53a/1.57 SteamGameServer_Init wrapper) expects 0 for the legacy Steam port
-			// and a plain "x.x.x.x" version: cut a suffix like "1.1.2.2/Stdio" at the slash.
-			char szVersion[32];
-			strncpy(szVersion, pchVersionString ? pchVersionString : "", sizeof(szVersion) - 1);
-			szVersion[sizeof(szVersion) - 1] = '\0';
-			char *pSlash = strchr(szVersion, '/');
-			if (pSlash)
-				*pSlash = '\0';
-
-			return api.internalGameServerInit(unIP, 0, usGamePort, usQueryPort, eServerMode, szVersion);
-		}
+			return GameServer_InitHL25(api, unIP, usGamePort, usQueryPort, eServerMode, pchVersionString);
 
 		return false;
 	}
