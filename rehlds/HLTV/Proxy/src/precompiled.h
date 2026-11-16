@@ -27,6 +27,7 @@
 #include "common/munge.h"
 
 #include <steam/steam_gameserver.h>
+#include "SteamApiCompat.h"
 
 #include <HLTV/IWorld.h>
 #include <HLTV/IProxy.h>
