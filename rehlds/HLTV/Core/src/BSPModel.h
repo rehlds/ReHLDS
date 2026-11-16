@@ -45,7 +45,7 @@ class IBaseSystem;
 class BSPModel: public IBSPModel {
 public:
 	BSPModel() {}
-	virtual ~BSPModel() {}
+	virtual ~BSPModel() { delete m_wadpath; }
 
 	EXT_FUNC void Init(IBaseSystem *system);
 	EXT_FUNC void Clear();
