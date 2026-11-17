@@ -297,6 +297,7 @@ protected:
 	};
 
 	virtual void AddSearchPathNoWrite(const char *pPath, const char *pathID);
+	virtual long GetFileModificationTime(const char *pFileName);
 	void AddSearchPathInternal(const char *pPath, const char *pathID, bool bAllowWrite);
 
 	void Warning(FileWarningLevel_t level, const char *fmt, ...);

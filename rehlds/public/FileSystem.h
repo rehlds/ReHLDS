@@ -195,6 +195,9 @@ public:
 	// open a file but force the data to come from the steam cache, NOT from disk
 	virtual FileHandle_t	OpenFromCacheForRead(const char *pFileName, const char *pOptions, const char *pathID = 0L) = 0;
 	virtual void			AddSearchPathNoWrite(const char *pPath, const char *pathID) = 0;
+
+	// Added in the Half-Life 25th Anniversary SDK (2024); same interface version
+	virtual long			GetFileModificationTime(const char *pFileName) = 0;
 };
 
 // Steam3/Src compat

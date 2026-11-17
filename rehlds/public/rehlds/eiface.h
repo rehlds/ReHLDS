@@ -300,6 +300,9 @@ typedef struct enginefuncs_s
 
 	// Added 2009/06/19 (no SDK update):
 	int(*pfnEngCheckParm)				(const char *pchCmdLineToken, char **ppnext);
+
+	// Added in the Half-Life 25th Anniversary SDK (2024):
+	edict_t*	(*pfnPEntityOfEntIndexAllEntities)	(int iEntIndex);
 } enginefuncs_t;
 
 

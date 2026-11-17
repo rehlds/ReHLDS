@@ -577,6 +577,21 @@ int EXT_FUNC IndexOfEdict(const edict_t *pEdict)
 	return index;
 }
 
+// HL25 SDK (enginefuncs_t::pfnPEntityOfEntIndexAllEntities). Matches the HL25 engine (HLDS 10211, black-box test):
+// NULL for an index out of range, a free edict, or an edict above the client slots without private data.
+// Unlike the original PEntityOfEntIndex it also returns the last client slot (index == maxclients) while it is empty.
+edict_t* EXT_FUNC PEntityOfEntIndexAllEntities(int iEntIndex)
+{
+	if (iEntIndex < 0 || iEntIndex >= g_psv.max_edicts)
+		return NULL;
+
+	edict_t *pEdict = EDICT_NUM(iEntIndex);
+	if (pEdict->free || (iEntIndex > g_psvs.maxclients && !pEdict->pvPrivateData))
+		return NULL;
+
+	return pEdict;
+}
+
 edict_t* EXT_FUNC PEntityOfEntIndex(int iEntIndex)
 {
 	if (iEntIndex < 0 || iEntIndex >= g_psv.max_edicts)
