@@ -27,6 +27,7 @@
 */
 
 #include "precompiled.h"
+#include "SteamClientIsolation.h"
 
 Master::GameToAppIDMapItem_t Master::m_GameToAppIDMap[] =
 {
@@ -132,7 +133,16 @@ void Master::RunFrame(double time)
 				INetwork *network = m_MasterSocket->GetNetwork();
 				NetAddress *netAdr = network->GetLocalAddress();
 
-				if (SteamGameServer_Init(ntohl(*(u_long *)&netAdr->m_IP[0]), 0, 0, 0xFFFFu, eServerModeNoAuthentication, MASTER_VERSION))
+				bool steamInit;
+				{
+#ifdef _WIN32
+					// Use the steamclient.dll of the proxy folder even while a Steam client is running (see SteamClientIsolation.h)
+					CSteamClientIsolation isolation(!m_System->CheckParam((char *)"-nolocalsteamclient"));
+#endif
+					steamInit = SteamGameServer_Init(ntohl(*(u_long *)&netAdr->m_IP[0]), 0, 0, 0xFFFFu, eServerModeNoAuthentication, MASTER_VERSION);
+				}
+
+				if (steamInit)
 				{
 					SteamGameServer()->SetProduct("hltv");
 					SteamGameServer()->SetGameDescription("hltv");

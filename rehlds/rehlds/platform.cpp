@@ -1,4 +1,5 @@
 #include "precompiled.h"
+#include "SteamClientIsolation.h"
 
 IReHLDSPlatform* CRehldsPlatformHolder::m_Platform;
 
@@ -174,6 +175,10 @@ ISteamApps* CSimplePlatform::SteamApps() {
 }
 
 bool CSimplePlatform::SteamGameServer_Init(uint32 unIP, uint16 usSteamPort, uint16 usGamePort, uint16 usQueryPort, EServerMode eServerMode, const char *pchVersionString) {
+#ifdef _WIN32
+	// Use the steamclient.dll of the server folder even while a Steam client is running (see SteamClientIsolation.h)
+	CSteamClientIsolation isolation(!COM_CheckParm("-nolocalsteamclient"));
+#endif
 	return ::SteamGameServer_Init(unIP, usSteamPort, usGamePort, usQueryPort, eServerMode, pchVersionString);
 }
 
