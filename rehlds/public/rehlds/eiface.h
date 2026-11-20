@@ -301,7 +301,7 @@ typedef struct enginefuncs_s
 	// Added 2009/06/19 (no SDK update):
 	int(*pfnEngCheckParm)				(const char *pchCmdLineToken, char **ppnext);
 
-	// Added in the Half-Life 25th Anniversary SDK (2024):
+	// Added 2019/06/26, engine build 8279 (ValveSoftware/halflife#2272); public SDK header only since the HL25 SDK (2024):
 	edict_t*	(*pfnPEntityOfEntIndexAllEntities)	(int iEntIndex);
 } enginefuncs_t;
 
