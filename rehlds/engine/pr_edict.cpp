@@ -577,6 +577,23 @@ int EXT_FUNC IndexOfEdict(const edict_t *pEdict)
 	return index;
 }
 
+// enginefuncs_t::pfnPEntityOfEntIndexAllEntities: added by Valve in engine build 8279 (2019) as the fixed variant of
+// PEntityOfEntIndex (ValveSoftware/halflife#2272; the fix in PEntityOfEntIndex itself was reverted because CZ:DS relies
+// on the old behaviour), declared in the public SDK since the HL25 update. Matches Valve's engine in a black-box test
+// (HLDS 8308, 8684 and 10211): NULL for an index out of range, a free edict, or an edict above the client slots without
+// private data. Unlike PEntityOfEntIndex it also returns the last client slot (index == maxclients) while it is empty.
+edict_t* EXT_FUNC PEntityOfEntIndexAllEntities(int iEntIndex)
+{
+	if (iEntIndex < 0 || iEntIndex >= g_psv.max_edicts)
+		return NULL;
+
+	edict_t *pEdict = EDICT_NUM(iEntIndex);
+	if (pEdict->free || (iEntIndex > g_psvs.maxclients && !pEdict->pvPrivateData))
+		return NULL;
+
+	return pEdict;
+}
+
 edict_t* EXT_FUNC PEntityOfEntIndex(int iEntIndex)
 {
 	if (iEntIndex < 0 || iEntIndex >= g_psv.max_edicts)

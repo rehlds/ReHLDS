@@ -188,7 +188,8 @@ enginefuncs_t g_engfuncsExportedToDlls = {
 	ConstructTutorMessageDecayBuffer,
 	ResetTutorMessageDecayData,
 	QueryClientCvarValue, QueryClientCvarValue2,
-	EngCheckParm
+	EngCheckParm,
+	PEntityOfEntIndexAllEntities
 };
 
 #ifdef _WIN32

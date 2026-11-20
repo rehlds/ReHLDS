@@ -1,4 +1,5 @@
 #include "precompiled.h"
+#include "SteamApiCompat.h"
 
 IReHLDSPlatform* CRehldsPlatformHolder::m_Platform;
 
@@ -170,15 +171,15 @@ void CSimplePlatform::SteamAPI_UnregisterCallResult(class CCallbackBase *pCallba
 }
 
 ISteamApps* CSimplePlatform::SteamApps() {
-	return ::SteamApps();
+	return SteamApiCompat::Apps();
 }
 
 bool CSimplePlatform::SteamGameServer_Init(uint32 unIP, uint16 usSteamPort, uint16 usGamePort, uint16 usQueryPort, EServerMode eServerMode, const char *pchVersionString) {
-	return ::SteamGameServer_Init(unIP, usSteamPort, usGamePort, usQueryPort, eServerMode, pchVersionString);
+	return SteamApiCompat::GameServer_Init(unIP, usSteamPort, usGamePort, usQueryPort, eServerMode, pchVersionString);
 }
 
 ISteamGameServer* CSimplePlatform::SteamGameServer() {
-	return ::SteamGameServer();
+	return SteamApiCompat::GameServer();
 }
 
 void CSimplePlatform::SteamGameServer_RunCallbacks() {
@@ -190,7 +191,7 @@ void CSimplePlatform::SteamAPI_RunCallbacks() {
 }
 
 void CSimplePlatform::SteamGameServer_Shutdown() {
-	::SteamGameServer_Shutdown();
+	SteamApiCompat::GameServer_Shutdown();
 }
 
 void CSimplePlatform::SteamAPI_UnregisterCallback(CCallbackBase *pCallback)

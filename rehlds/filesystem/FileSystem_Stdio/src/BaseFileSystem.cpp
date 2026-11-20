@@ -1462,6 +1462,21 @@ long CBaseFileSystem::GetFileTime(const char *pFileName)
 	return 0L;
 }
 
+// HL25 SDK: last modification time of a file on disk (st_mtime);
+// a file inside a pack file has no own time, it gets the time of the pack.
+long CBaseFileSystem::GetFileModificationTime(const char *pFileName)
+{
+	char szLocalPath[MAX_PATH];
+	if (GetLocalPath(pFileName, szLocalPath, sizeof(szLocalPath)))
+	{
+		struct _stat buf;
+		if (FS_stat(szLocalPath, &buf) != -1)
+			return (long)buf.st_mtime;
+	}
+
+	return GetFileTime(pFileName);
+}
+
 void CBaseFileSystem::FileTimeToString(char *pString, int maxCharsIncludingTerminator, long fileTime)
 {
 	time_t time = fileTime;

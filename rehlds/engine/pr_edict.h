@@ -56,6 +56,7 @@ edict_t *PEntityOfEntOffset(int iEntOffset);
 int EntOffsetOfPEntity(const edict_t *pEdict);
 int IndexOfEdict(const edict_t *pEdict);
 edict_t *PEntityOfEntIndex(int iEntIndex);
+edict_t *PEntityOfEntIndexAllEntities(int iEntIndex);
 const char *SzFromIndex(int iString);
 entvars_t *GetVarsOfEnt(edict_t *pEdict);
 edict_t *FindEntityByVars(entvars_t *pvars);

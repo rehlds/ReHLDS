@@ -27,6 +27,7 @@
 */
 
 #include "precompiled.h"
+#include "SteamApiCompat.h"
 
 void CSteam3Server::OnGSPolicyResponse(GSPolicyResponse_t *pPolicyResponse)
 {
@@ -300,6 +301,10 @@ void CSteam3Server::Activate()
 		if (!CRehldsPlatformHolder::get()->SteamGameServer_Init(unIP, usSteamPort, gamePort, 0xFFFFu, eSMode, gpszVersionString))
 			Sys_Error("Unable to initialize Steam.");
 
+		char szSteamInfo[2560];
+		SteamApiCompat::Describe(szSteamInfo, sizeof(szSteamInfo), COM_CheckParm("-debug") != 0);
+		Con_Printf("%s", szSteamInfo);
+
 		CRehldsPlatformHolder::get()->SteamGameServer()->SetProduct(gpszProductString);
 		CRehldsPlatformHolder::get()->SteamGameServer()->SetModDir(gamedir);
 		CRehldsPlatformHolder::get()->SteamGameServer()->SetDedicatedServer(g_pcls.state == ca_dedicated);
@@ -336,10 +341,10 @@ void CSteam3Server::Shutdown()
 {
 	if (m_bLoggedOn)
 	{
-		SteamGameServer()->EnableHeartbeats(0);
-		SteamGameServer()->LogOff();
+		CRehldsPlatformHolder::get()->SteamGameServer()->EnableHeartbeats(0);
+		CRehldsPlatformHolder::get()->SteamGameServer()->LogOff();
 
-		SteamGameServer_Shutdown();
+		CRehldsPlatformHolder::get()->SteamGameServer_Shutdown();
 		m_bLoggedOn = false;
 	}
 }

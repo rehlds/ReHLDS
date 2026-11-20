@@ -132,16 +132,20 @@ void Master::RunFrame(double time)
 				INetwork *network = m_MasterSocket->GetNetwork();
 				NetAddress *netAdr = network->GetLocalAddress();
 
-				if (SteamGameServer_Init(ntohl(*(u_long *)&netAdr->m_IP[0]), 0, 0, 0xFFFFu, eServerModeNoAuthentication, MASTER_VERSION))
+				if (SteamApiCompat::GameServer_Init(ntohl(*(u_long *)&netAdr->m_IP[0]), 0, 0, 0xFFFFu, eServerModeNoAuthentication, MASTER_VERSION))
 				{
-					SteamGameServer()->SetProduct("hltv");
-					SteamGameServer()->SetGameDescription("hltv");
-					SteamGameServer()->SetModDir(world->GetGameDir());
-					SteamGameServer()->SetDedicatedServer(true);
-					SteamGameServer()->SetSpectatorPort(htons(netAdr->m_Port));
-					SteamGameServer()->LogOnAnonymous();
+					char szSteamInfo[2560];
+					SteamApiCompat::Describe(szSteamInfo, sizeof(szSteamInfo), m_System->CheckParam("-debug") != nullptr);
+					m_System->Printf("%s", szSteamInfo);
 
-					SteamGameServer()->EnableHeartbeats(true);
+					SteamApiCompat::GameServer()->SetProduct("hltv");
+					SteamApiCompat::GameServer()->SetGameDescription("hltv");
+					SteamApiCompat::GameServer()->SetModDir(world->GetGameDir());
+					SteamApiCompat::GameServer()->SetDedicatedServer(true);
+					SteamApiCompat::GameServer()->SetSpectatorPort(htons(netAdr->m_Port));
+					SteamApiCompat::GameServer()->LogOnAnonymous();
+
+					SteamApiCompat::GameServer()->EnableHeartbeats(true);
 				}
 				else
 				{
@@ -150,7 +154,7 @@ void Master::RunFrame(double time)
 					m_System->DPrintf("Master module failed to initialize. (init failed)\n");
 				}
 
-				m_bSteamInitialized = SteamGameServer() ? true : false;
+				m_bSteamInitialized = SteamApiCompat::GameServer() ? true : false;
 			}
 		}
 
@@ -168,11 +172,11 @@ void Master::RunFrame(double time)
 				int slots, proxies, spectators;
 				m_Proxy->GetStatistics(proxies, slots, spectators);
 
-				SteamGameServer()->SetMaxPlayerCount(Q_min(slots, 127));	// max slots
-				SteamGameServer()->SetServerName(szHostName);
-				SteamGameServer()->SetMapName(mapName);
-				SteamGameServer()->SetPasswordProtected(m_Proxy->IsPasswordProtected());
-				SteamGameServer()->SetModDir(world->GetGameDir());
+				SteamApiCompat::GameServer()->SetMaxPlayerCount(Q_min(slots, 127));	// max slots
+				SteamApiCompat::GameServer()->SetServerName(szHostName);
+				SteamApiCompat::GameServer()->SetMapName(mapName);
+				SteamApiCompat::GameServer()->SetPasswordProtected(m_Proxy->IsPasswordProtected());
+				SteamApiCompat::GameServer()->SetModDir(world->GetGameDir());
 
 				m_flMasterUpdateTime = m_System->GetTime() + 5.0f;
 			}
@@ -185,7 +189,7 @@ void Master::RunFrame(double time)
 		uint16 port;
 		char szOutBuf[4096];
 
-		int iLen = SteamGameServer()->GetNextOutgoingPacket(szOutBuf, sizeof(szOutBuf), &ip, &port);
+		int iLen = SteamApiCompat::GameServer()->GetNextOutgoingPacket(szOutBuf, sizeof(szOutBuf), &ip, &port);
 		while (iLen > 0)
 		{
 			NetAddress netAdr;
@@ -194,7 +198,7 @@ void Master::RunFrame(double time)
 
 			m_MasterSocket->SendPacket(&netAdr, szOutBuf, iLen);
 
-			iLen = SteamGameServer()->GetNextOutgoingPacket(szOutBuf, sizeof(szOutBuf), &ip, &port);
+			iLen = SteamApiCompat::GameServer()->GetNextOutgoingPacket(szOutBuf, sizeof(szOutBuf), &ip, &port);
 		}
 	}
 }
@@ -205,12 +209,12 @@ void Master::ShutDown()
 		return;
 	}
 
-	if (SteamGameServer()) {
-		SteamGameServer()->LogOff();
+	if (SteamApiCompat::GameServer()) {
+		SteamApiCompat::GameServer()->LogOff();
 	}
 
 	BaseSystemModule::ShutDown();
-	SteamGameServer_Shutdown();
+	SteamApiCompat::GameServer_Shutdown();
 	m_System->Printf("Master module shutdown.\n");
 }
 
@@ -220,14 +224,14 @@ void Master::CMD_Heartbeat(char *cmdLine)
 		return;
 	}
 
-	if (SteamGameServer()) {
-		SteamGameServer()->ForceHeartbeat();
+	if (SteamApiCompat::GameServer()) {
+		SteamApiCompat::GameServer()->ForceHeartbeat();
 	}
 }
 
 void Master::CMD_NoMaster(char *cmdLine)
 {
-	if (m_State == MODULE_DISCONNECTED || !SteamGameServer()) {
+	if (m_State == MODULE_DISCONNECTED || !SteamApiCompat::GameServer()) {
 		return;
 	}
 
@@ -243,7 +247,7 @@ void Master::CMD_NoMaster(char *cmdLine)
 	m_NoMaster = Q_atoi(params.GetToken(1)) ? true : false;
 
 	if (bOldMasterState != m_NoMaster) {
-		SteamGameServer()->EnableHeartbeats(m_NoMaster);
+		SteamApiCompat::GameServer()->EnableHeartbeats(m_NoMaster);
 	}
 }
 
@@ -286,8 +290,8 @@ void Master::SendShutdown()
 		return;
 	}
 
-	if (SteamGameServer()) {
-		SteamGameServer()->EnableHeartbeats(false);
+	if (SteamApiCompat::GameServer()) {
+		SteamApiCompat::GameServer()->EnableHeartbeats(false);
 	}
 }
 

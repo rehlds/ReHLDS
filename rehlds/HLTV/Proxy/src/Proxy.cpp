@@ -1521,7 +1521,7 @@ bool Proxy::ProcessConnectionlessMessage(NetAddress *from, BitBuffer *stream)
 		return false;
 	}
 
-	if (SteamGameServer())
+	if (SteamApiCompat::GameServer())
 	{
 		const int maxBuffer = 4096;
 		unsigned char data[maxBuffer];
@@ -1530,7 +1530,7 @@ bool Proxy::ProcessConnectionlessMessage(NetAddress *from, BitBuffer *stream)
 		Q_memcpy((char *)&data[4], stream->m_Data, maxSize);
 		*(uint32 *)data = CONNECTIONLESS_HEADER; // connectionless packet
 
-		SteamGameServer()->HandleIncomingPacket(data, maxSize + 4, ntohl(*(u_long *)&from->m_IP[0]), htons(from->m_Port));
+		SteamApiCompat::GameServer()->HandleIncomingPacket(data, maxSize + 4, ntohl(*(u_long *)&from->m_IP[0]), htons(from->m_Port));
 	}
 
 	char *c = cmdLine.GetToken(0);
