@@ -28,6 +28,12 @@
 
 #include "precompiled.h"
 
+#ifdef LAUNCHER_FIXES
+#include <sys/timerfd.h>
+#include <errno.h>
+#include <stdint.h>
+#endif
+
 class CSys: public ISys {
 public:
 	CSys();
@@ -66,6 +72,131 @@ CSys::~CSys()
 {
 	sys = nullptr;
 }
+
+#ifdef LAUNCHER_FIXES
+
+// Optional engine export: microseconds until the next server frame is due (0 = due now),
+// or -1 if the engine has no frame limit. Older engines don't export it.
+FrameSleepTime_t Host_GetFrameSleepTime = nullptr;
+
+// -pingboost 1 timer
+static int g_iTimerFd = -1;
+
+// All sleep functions take microseconds (at most 100 ms, see Host_GetFrameSleepTime)
+void CSys::Sleep(int msec)
+{
+	Sys_Sleep(msec * 1000);
+}
+
+// Default
+void Sleep_Old(int usec)
+{
+	usleep(usec);
+}
+
+// -pingboost 2
+void Sleep_Select(int usec)
+{
+	struct timeval tv;
+	tv.tv_sec = usec / 1000000;
+	tv.tv_usec = usec % 1000000;
+
+	select(0, nullptr, nullptr, nullptr, &tv);
+}
+
+// -pingboost 3: the engine works out how long to wait by itself
+void Sleep_Net(int usec)
+{
+	NET_Sleep_Timeout();
+}
+
+// -pingboost 1: a high resolution one-shot timer.
+// This used to be setitimer() + pause() with a SIGALRM handler, which was racy (the handler
+// re-armed a stray 1 ms timer on almost every sleep, and the signal can be delivered to another
+// thread so pause() isn't guaranteed to wake up). A timerfd is the same kind of kernel timer
+// without signals.
+void Sleep_Timer(int usec)
+{
+	struct itimerspec ts = {};
+	ts.it_value.tv_sec = usec / 1000000;
+	ts.it_value.tv_nsec = (usec % 1000000) * 1000L;
+
+	// a zero it_value would disarm the timer and read() would block forever
+	if (ts.it_value.tv_sec == 0 && ts.it_value.tv_nsec == 0)
+		ts.it_value.tv_nsec = 1000;
+
+	if (timerfd_settime(g_iTimerFd, 0, &ts, nullptr) != 0)
+		return;
+
+	uint64_t expirations;
+	while (read(g_iTimerFd, &expirations, sizeof(expirations)) < 0 && errno == EINTR)
+		;
+}
+
+// Called once per main loop iteration, before the engine frame.
+// Sleeps until the next server frame is due instead of a fixed 1 ms, so frame processing time
+// isn't added on top of the sleep and the server can actually hold sys_ticrate in every mode.
+void Sys_SleepUntilNextFrame()
+{
+	if (Sys_Sleep == Sleep_Net)
+	{
+		Sleep_Net(0);
+		return;
+	}
+
+	int usec = 1000; // old engine or no frame limit (sys_ticrate <= 0): fixed 1 ms, as before
+	if (Host_GetFrameSleepTime)
+	{
+		int wait = Host_GetFrameSleepTime();
+		if (wait == 0)
+			return; // a frame is due now
+
+		if (wait > 0)
+			usec = wait;
+	}
+
+	Sys_Sleep(usec);
+}
+
+void Sys_InitPingboost()
+{
+	Sys_Sleep = Sleep_Old;
+	Host_GetFrameSleepTime = (FrameSleepTime_t)Sys_GetProcAddress(g_pEngineModule, "Host_GetFrameSleepTime");
+
+	char *pPingType;
+	if (CommandLine()->CheckParm("-pingboost", &pPingType) && pPingType) {
+		int type = Q_atoi(pPingType);
+		switch (type) {
+		case 1:
+			g_iTimerFd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
+			if (g_iTimerFd >= 0) {
+				Sys_Sleep = Sleep_Timer;
+			}
+			else {
+				printf("WARNING: timerfd_create failed, -pingboost 1 falls back to -pingboost 2\n");
+				Sys_Sleep = Sleep_Select;
+			}
+			break;
+		case 2:
+			Sys_Sleep = Sleep_Select;
+			break;
+		case 3:
+			NET_Sleep_Timeout = (NET_Sleep_t)Sys_GetProcAddress(g_pEngineModule, "NET_Sleep_Timeout");
+			if (NET_Sleep_Timeout) {
+				Sys_Sleep = Sleep_Net;
+			}
+			else {
+				printf("WARNING: engine doesn't export NET_Sleep_Timeout, -pingboost 3 falls back to -pingboost 2\n");
+				Sys_Sleep = Sleep_Select;
+			}
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+#else // LAUNCHER_FIXES
 
 // this checks if pause has run yet,
 // tell the compiler it can change at any time
@@ -175,6 +306,8 @@ void Sys_InitPingboost()
 		}
 	}
 }
+
+#endif // LAUNCHER_FIXES
 
 void Sys_WriteProcessIdFile()
 {

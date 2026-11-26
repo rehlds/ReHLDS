@@ -664,10 +664,69 @@ void Host_ClearMemory(qboolean bQuiet)
 	SV_ClearClientStates();
 }
 
+// Dedicated server tick rate: "-sys_ticrate <n>" on the command line overrides the sys_ticrate cvar.
+// Used by Host_FilterTime() and by NET_Sleep_Timeout() (-pingboost 3), so both always agree.
+float Host_GetDedicatedTicrate()
+{
+	static int command_line_ticrate = -1;
+
+	if (command_line_ticrate == -1)
+		command_line_ticrate = COM_CheckParm("-sys_ticrate");
+
+	if (command_line_ticrate > 0)
+		return Q_atof(com_argv[command_line_ticrate + 1]);
+
+	return sys_ticrate.value;
+}
+
+#ifdef REHLDS_FIXES
+// Host time (realtime) at which the next dedicated server frame is allowed to run.
+// Frames are scheduled on a fixed timeline: a frame that starts a bit late (sleep/scheduler wake-up
+// latency) doesn't push all following frames back, so the server can actually hold sys_ticrate.
+static double g_flNextDedicatedFrameTime = 0.0;
+
+// Wall-clock seconds until Host_FilterTime() will accept the next dedicated server frame
+// (<= 0 if a frame is already due). Only meaningful when the tick rate is > 0.
+double Host_GetDedicatedFrameWaitTime()
+{
+	double timescale = sys_timescale.value;
+	if (timescale <= 0.0)
+		timescale = 1.0;
+
+	// realtime as of the last Host_FilterTime() call, plus what the next call will add
+	// for the wall-clock time passed since then
+	double now = realtime + timescale * (Sys_FloatTime() - eng->GetCurTime());
+
+	return (g_flNextDedicatedFrameTime - now) / timescale;
+}
+#endif // REHLDS_FIXES
+
+// Exported for the dedicated server launcher: microseconds to sleep until the next server frame
+// is due (capped at 100 ms), 0 if a frame is due now, or -1 if there is no frame limit
+// (sys_ticrate <= 0) or no information, in which case the launcher uses its own fixed sleep.
+DLL_EXPORT int Host_GetFrameSleepTime()
+{
+#ifdef REHLDS_FIXES
+	if (!g_bIsDedicatedServer || Host_GetDedicatedTicrate() <= 0.0f)
+		return -1;
+
+	double wait = Host_GetDedicatedFrameWaitTime();
+	if (wait <= 0.0)
+		return 0;
+
+	if (wait > 0.1)
+		wait = 0.1;
+
+	int usec = (int)(wait * 1000000.0);
+	return (usec < 1) ? 1 : usec;
+#else
+	return -1;
+#endif // REHLDS_FIXES
+}
+
 qboolean Host_FilterTime(float time)
 {
 	float fps;
-	static int command_line_ticrate = -1;
 
 	if (host_framerate.value > 0.0f)
 	{
@@ -682,18 +741,25 @@ qboolean Host_FilterTime(float time)
 	realtime += sys_timescale.value * time;
 	if (g_bIsDedicatedServer)
 	{
-		if (command_line_ticrate == -1)
-			command_line_ticrate = COM_CheckParm("-sys_ticrate");
-
-		if (command_line_ticrate > 0)
-			fps = Q_atof(com_argv[command_line_ticrate + 1]);
-		else
-			fps = sys_ticrate.value;
+		fps = Host_GetDedicatedTicrate();
 
 		if (fps > 0.0f)
 		{
+#ifdef REHLDS_FIXES
+			if (realtime < g_flNextDedicatedFrameTime)
+				return FALSE;
+
+			double interval = 1.0 / fps;
+			g_flNextDedicatedFrameTime += interval;
+
+			// More than a whole frame behind (hitch, map load, tick rate changed): resync instead of
+			// running a burst of catch-up frames
+			if (g_flNextDedicatedFrameTime <= realtime || g_flNextDedicatedFrameTime > realtime + interval)
+				g_flNextDedicatedFrameTime = realtime + interval;
+#else
 			if (1.0f / (fps + 1.0f) > realtime - oldrealtime)
 				return FALSE;
+#endif
 		}
 	}
 	else

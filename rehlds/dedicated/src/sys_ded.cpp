@@ -155,8 +155,13 @@ int RunEngine()
 	bool bDone = false;
 	while (!bDone)
 	{
+#if defined(LAUNCHER_FIXES) && !defined(_WIN32)
+		// Sleep until the next server frame is due
+		Sys_SleepUntilNextFrame();
+#else
 		// Running really fast, yield some time to other apps
 		sys->Sleep(1);
+#endif
 
 		Sys_PrepareConsoleInput();
 
