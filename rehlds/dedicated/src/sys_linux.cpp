@@ -64,6 +64,15 @@ char g_szEXEName[MAX_PATH];
 SleepType Sys_Sleep;
 NET_Sleep_t NET_Sleep_Timeout = nullptr;
 
+#ifdef LAUNCHER_FIXES
+// Optional engine export: microseconds until the next server frame is due (0 = due now),
+// or -1 if the engine has no frame limit. Older engines don't export it.
+FrameSleepTime_t Host_GetFrameSleepTime = nullptr;
+
+// -pingboost 1 timer
+static int g_iTimerFd = -1;
+#endif
+
 CSys::CSys()
 {
 }
@@ -73,48 +82,46 @@ CSys::~CSys()
 	sys = nullptr;
 }
 
-#ifdef LAUNCHER_FIXES
-
-// Optional engine export: microseconds until the next server frame is due (0 = due now),
-// or -1 if the engine has no frame limit. Older engines don't export it.
-FrameSleepTime_t Host_GetFrameSleepTime = nullptr;
-
-// -pingboost 1 timer
-static int g_iTimerFd = -1;
-
-// All sleep functions take microseconds (at most 100 ms, see Host_GetFrameSleepTime)
+// The sleep functions take microseconds
 void CSys::Sleep(int msec)
 {
 	Sys_Sleep(msec * 1000);
 }
 
-// Default
 void Sleep_Old(int usec)
 {
 	usleep(usec);
 }
 
-// -pingboost 2
 void Sleep_Select(int usec)
 {
 	struct timeval tv;
+
 	tv.tv_sec = usec / 1000000;
 	tv.tv_usec = usec % 1000000;
 
-	select(0, nullptr, nullptr, nullptr, &tv);
+	select(1, nullptr, nullptr, nullptr, &tv);
 }
 
-// -pingboost 3: the engine works out how long to wait by itself
 void Sleep_Net(int usec)
 {
 	NET_Sleep_Timeout();
 }
 
-// -pingboost 1: a high resolution one-shot timer.
-// This used to be setitimer() + pause() with a SIGALRM handler, which was racy (the handler
-// re-armed a stray 1 ms timer on almost every sleep, and the signal can be delivered to another
-// thread so pause() isn't guaranteed to wake up). A timerfd is the same kind of kernel timer
-// without signals.
+// linux runs on a 100Hz scheduling clock, so the minimum latency from
+// usleep is 10msec. However, people want lower latency than this..
+//
+// There are a few solutions, one is to use the realtime scheduler in the
+// kernel BUT this needs root privelleges to start. It also can play
+// unfriendly with other programs.
+//
+// Another solution is to use software timers, they use the RTC of the
+// system and are accurate to microseconds (or so).
+//
+#ifdef LAUNCHER_FIXES
+// timers, via a timerfd are used here. This used to be setitimer() + pause() with a SIGALRM
+// handler, which re-armed a stray 1 ms timer on almost every sleep (g_bPaused is only set after
+// pause() returns), and the signal can be delivered to another thread so pause() may not wake up.
 void Sleep_Timer(int usec)
 {
 	struct itimerspec ts = {};
@@ -140,7 +147,7 @@ void Sys_SleepUntilNextFrame()
 {
 	if (Sys_Sleep == Sleep_Net)
 	{
-		Sleep_Net(0);
+		Sleep_Net(0); // the engine works out how long to wait by itself
 		return;
 	}
 
@@ -157,94 +164,18 @@ void Sys_SleepUntilNextFrame()
 
 	Sys_Sleep(usec);
 }
-
-void Sys_InitPingboost()
-{
-	Sys_Sleep = Sleep_Old;
-	Host_GetFrameSleepTime = (FrameSleepTime_t)Sys_GetProcAddress(g_pEngineModule, "Host_GetFrameSleepTime");
-
-	char *pPingType;
-	if (CommandLine()->CheckParm("-pingboost", &pPingType) && pPingType) {
-		int type = Q_atoi(pPingType);
-		switch (type) {
-		case 1:
-			g_iTimerFd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
-			if (g_iTimerFd >= 0) {
-				Sys_Sleep = Sleep_Timer;
-			}
-			else {
-				printf("WARNING: timerfd_create failed, -pingboost 1 falls back to -pingboost 2\n");
-				Sys_Sleep = Sleep_Select;
-			}
-			break;
-		case 2:
-			Sys_Sleep = Sleep_Select;
-			break;
-		case 3:
-			NET_Sleep_Timeout = (NET_Sleep_t)Sys_GetProcAddress(g_pEngineModule, "NET_Sleep_Timeout");
-			if (NET_Sleep_Timeout) {
-				Sys_Sleep = Sleep_Net;
-			}
-			else {
-				printf("WARNING: engine doesn't export NET_Sleep_Timeout, -pingboost 3 falls back to -pingboost 2\n");
-				Sys_Sleep = Sleep_Select;
-			}
-			break;
-		default:
-			break;
-		}
-	}
-}
-
 #else // LAUNCHER_FIXES
-
 // this checks if pause has run yet,
 // tell the compiler it can change at any time
 volatile bool g_bPaused = false;
 
-void CSys::Sleep(int msec)
-{
-	Sys_Sleep(msec);
-}
-
-void Sleep_Old(int msec)
-{
-	usleep(msec * 1000);
-}
-
-void Sleep_Select(int msec)
-{
-	struct timeval tv;
-
-	// Assumes msec < 1000
-	tv.tv_sec = 0;
-	tv.tv_usec = 1000 * msec;
-
-	select(1, nullptr, nullptr, nullptr, &tv);
-}
-
-void Sleep_Net(int msec)
-{
-	NET_Sleep_Timeout();
-}
-
-// linux runs on a 100Hz scheduling clock, so the minimum latency from
-// usleep is 10msec. However, people want lower latency than this..
-//
-// There are a few solutions, one is to use the realtime scheduler in the
-// kernel BUT this needs root privelleges to start. It also can play
-// unfriendly with other programs.
-//
-// Another solution is to use software timers, they use the RTC of the
-// system and are accurate to microseconds (or so).
-//
 // timers, via setitimer() are used here
-void Sleep_Timer(int msec)
+void Sleep_Timer(int usec)
 {
 	struct itimerval tm;
 
-	tm.it_value.tv_sec = msec / 1000;		// convert msec to seconds
-	tm.it_value.tv_usec = (msec % 1000) * 1E3;	// get the number of msecs and change to micros
+	tm.it_value.tv_sec = usec / 1000000;
+	tm.it_value.tv_usec = usec % 1000000;
 	tm.it_interval.tv_sec = 0;
 	tm.it_interval.tv_usec = 0;
 
@@ -276,17 +207,31 @@ void alarmFunc(int num)
 	}
 
 }
+#endif // LAUNCHER_FIXES
 
 void Sys_InitPingboost()
 {
 	Sys_Sleep = Sleep_Old;
+
+#ifdef LAUNCHER_FIXES
+	Host_GetFrameSleepTime = (FrameSleepTime_t)Sys_GetProcAddress(g_pEngineModule, "Host_GetFrameSleepTime");
+#endif
 
 	char *pPingType;
 	if (CommandLine()->CheckParm("-pingboost", &pPingType) && pPingType) {
 		int type = Q_atoi(pPingType);
 		switch (type) {
 		case 1:
+#ifdef LAUNCHER_FIXES
+			g_iTimerFd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
+			if (g_iTimerFd < 0) {
+				printf("WARNING: timerfd_create failed, -pingboost 1 falls back to -pingboost 2\n");
+				Sys_Sleep = Sleep_Select;
+				break;
+			}
+#else
 			signal(SIGALRM, alarmFunc);
+#endif
 			Sys_Sleep = Sleep_Timer;
 			break;
 		case 2:
@@ -298,6 +243,12 @@ void Sys_InitPingboost()
 			// we Sys_GetProcAddress NET_Sleep() from
 			//engine_i486.so later in this function
 			NET_Sleep_Timeout = (NET_Sleep_t)Sys_GetProcAddress(g_pEngineModule, "NET_Sleep_Timeout");
+#ifdef LAUNCHER_FIXES
+			if (!NET_Sleep_Timeout) {
+				printf("WARNING: engine doesn't export NET_Sleep_Timeout, -pingboost 3 falls back to -pingboost 2\n");
+				Sys_Sleep = Sleep_Select;
+			}
+#endif
 			break;
 		// just in case
 		default:
@@ -306,8 +257,6 @@ void Sys_InitPingboost()
 		}
 	}
 }
-
-#endif // LAUNCHER_FIXES
 
 void Sys_WriteProcessIdFile()
 {
