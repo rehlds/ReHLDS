@@ -1164,6 +1164,22 @@ int World::CompressFrame(frame_t *from, BitBuffer *stream)
 		entity_state_t *baseline = &m_BaseLines[header.num];
 		header.offset = FindBestBaseline(entnum, &baseline, entities, header.num, header.custom);
 
+		// Fix for https://github.com/rehlds/ReHLDS/issues/1184
+		// entityType travels only through the "custom" header bit and is not a
+		// delta field, while modelindex IS delta-encoded. If the selected
+		// baseline has a different entityType (e.g. a normal entity's stale
+		// state carrying a studio modelindex), delta'ing a beam from it would
+		// inherit that studio modelindex (since only changed fields are sent)
+		// and the client would crash with "Bad model on beam ( not sprite )".
+		// Delta from an empty state in that case so all fields are emitted.
+		entity_state_t nullstate;
+		if (baseline->entityType != entities[entnum].entityType)
+		{
+			Q_memset(&nullstate, 0, sizeof(nullstate));
+			baseline = &nullstate;
+			header.offset = 0;
+		}
+
 		delta_t *delta = GetDeltaEncoder(header.num, header.custom);
 		m_Delta.WriteDelta(stream, (byte *)baseline, (byte *)&entities[entnum], true, delta, &header);
 	}
@@ -1342,7 +1358,19 @@ void World::WritePacketEntities(BitBuffer *stream, frame_t *frame, frame_t *delt
 			header.remove     = false;
 
 			delta_t *delta = GetDeltaEncoder(newnum, header.custom);
-			m_Delta.WriteDelta(stream, (byte *)&deltaEntities[oldindex], (byte *)&frameEntities[newindex], false, delta, &header);
+
+			// Fix for https://github.com/rehlds/ReHLDS/issues/1184
+			// See CompressFrame: if the previous frame entity has a different
+			// entityType, its modelindex cannot be trusted as a source for
+			// inherited delta fields (a beam could inherit a studio modelindex).
+			entity_state_t nullstate;
+			byte *fromState = (byte *)&deltaEntities[oldindex];
+			if (deltaEntities[oldindex].entityType != frameEntities[newindex].entityType)
+			{
+				Q_memset(&nullstate, 0, sizeof(nullstate));
+				fromState = (byte *)&nullstate;
+			}
+			m_Delta.WriteDelta(stream, fromState, (byte *)&frameEntities[newindex], false, delta, &header);
 
 			oldindex++;
 			newindex++;
@@ -1363,7 +1391,20 @@ void World::WritePacketEntities(BitBuffer *stream, frame_t *frame, frame_t *delt
 			header.remove     = false;
 
 			delta_t *delta = GetDeltaEncoder(newnum, header.custom);
-			m_Delta.WriteDelta(stream, (byte *)&m_BaseLines[newnum], (byte *)&frameEntities[newindex], true, delta, &header);
+
+			// Fix for https://github.com/rehlds/ReHLDS/issues/1184
+			// The persistent baseline m_BaseLines[newnum] may have been stored
+			// when this slot was a different entityType, so its modelindex is
+			// stale for a beam. Delta from an empty state so modelindex is
+			// always emitted when the entity type differs.
+			entity_state_t nullstate;
+			byte *fromState = (byte *)&m_BaseLines[newnum];
+			if (m_BaseLines[newnum].entityType != frameEntities[newindex].entityType)
+			{
+				Q_memset(&nullstate, 0, sizeof(nullstate));
+				fromState = (byte *)&nullstate;
+			}
+			m_Delta.WriteDelta(stream, fromState, (byte *)&frameEntities[newindex], true, delta, &header);
 			newindex++;
 			continue;
 		}
