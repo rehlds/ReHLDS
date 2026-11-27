@@ -1189,7 +1189,15 @@ int World::FindBestBaseline(int index, entity_state_t **baseline, entity_state_t
 
 	for (i = index - 1; bestbitnumber > 0 && i >= 0 && (index - i) <= 64; i--)
 	{
-		if (to[index].modelindex == to[i].modelindex)
+		// Fix for https://github.com/rehlds/ReHLDS/issues/1184
+		// Only reuse a previous entity as delta baseline when it has the same
+		// entityType (ENTITY_BEAM vs ENTITY_NORMAL). The engine's
+		// SV_FindBestBaseline compares entityType for the same reason:
+		// modelindex is a delta-encoded field, so delta'ing a beam from a
+		// normal entity (or vice versa) can carry a stale modelindex into a
+		// beam, e.g. a studio model on an ENTITY_BEAM, which makes the client
+		// crash with "Bad model on beam ( not sprite )".
+		if (to[index].entityType == to[i].entityType)
 		{
 			bitnumber = m_Delta.TestDelta((byte *)&to[i], (byte *)&to[index], delta);
 
