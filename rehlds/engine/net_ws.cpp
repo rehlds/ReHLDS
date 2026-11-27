@@ -978,6 +978,26 @@ qboolean NET_QueuePacket(netsrc_t sock)
 
 DLL_EXPORT int NET_Sleep_Timeout()
 {
+#ifdef REHLDS_FIXES
+	// Sleep only until the next server frame is due. The wait is measured from the last frame,
+	// so the time spent processing a frame is no longer added on top of a fixed sleep.
+	//
+	// Sockets aren't watched: Host_FilterTime() won't run a frame (which is where packets are read)
+	// before it is due, so waking up on a packet gains nothing. Worse, the packet stays unread,
+	// so select() keeps returning immediately and the loop spins until the frame is due.
+	int usec = Host_GetFrameSleepTime();
+	if (usec == 0)
+		return 0; // frame is due, run it now
+
+	if (usec < 0)
+		usec = 1; // unlimited tick rate: shortest possible sleep, as before
+
+	struct timeval tv;
+	tv.tv_sec = 0;
+	tv.tv_usec = usec; // at most 100 ms
+
+	return select(0, NULL, NULL, NULL, &tv);
+#else // REHLDS_FIXES
 	static int32 lasttime;
 	static int numFrames;
 	static int staggerFrames;
@@ -1042,6 +1062,7 @@ DLL_EXPORT int NET_Sleep_Timeout()
 	}
 	--numFrames;
 	return res;
+#endif // REHLDS_FIXES
 }
 
 int NET_Sleep()

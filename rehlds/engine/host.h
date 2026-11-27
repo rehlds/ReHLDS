@@ -96,6 +96,11 @@ void Host_ShutdownServer(qboolean crash);
 void SV_ClearClientStates(void);
 void Host_CheckDyanmicStructures(void);
 void Host_ClearMemory(qboolean bQuiet);
+float Host_GetDedicatedTicrate();
+#ifdef REHLDS_FIXES
+double Host_GetDedicatedFrameWaitTime();
+#endif
+DLL_EXPORT int Host_GetFrameSleepTime();
 qboolean Host_FilterTime(float time);
 qboolean Master_IsLanGame(void);
 void Master_Heartbeat_f(void);

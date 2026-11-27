@@ -32,7 +32,8 @@
 #define LAUNCHER_OK		0
 
 typedef void (*NET_Sleep_t)();
-typedef void (*SleepType)(int msec);
+typedef void (*SleepType)(int usec);
+typedef int (*FrameSleepTime_t)();
 
 extern bool g_bVGui;
 extern IDedicatedServerAPI *engineAPI;
@@ -40,5 +41,8 @@ extern IDedicatedServerAPI *engineAPI;
 bool Sys_SetupConsole();
 void Sys_PrepareConsoleInput();
 void Sys_InitPingboost();
+#if defined(LAUNCHER_FIXES) && !defined(_WIN32)
+void Sys_SleepUntilNextFrame();
+#endif
 void Sys_WriteProcessIdFile();
 void Sys_PreloadSteamClient();
